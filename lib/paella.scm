@@ -188,15 +188,17 @@
 
 ;; TODO
 (define (http-internal-server-error out e header?)
-  (let* ((content (format "Server Error\r\n condition:~a\r\n headers: ~a\r\n"
-			 e header?))
-	 (bv (string->utf8 content)))
-    (put-bytevector out #*"HTTP/1.1 500 Internal Server Error\r\n")
-    (put-bytevector out #*"Content-Type: text/plain\r\n\r\n")
-    (put-bytevector out #*"Content-Length: ")
-    (put-bytevector out (string->utf8 (number->string (bytevector-length bv))))
-    (put-bytevector out #*"\r\n")
-    (put-bytevector out bv)))
+  (guard (e (else #f))
+    (let* ((content (format "Server Error\r\n condition:~a\r\n headers: ~a\r\n"
+			    e header?))
+	   (bv (string->utf8 content)))
+      (put-bytevector out #*"HTTP/1.1 500 Internal Server Error\r\n")
+      (put-bytevector out #*"Content-Type: text/plain\r\n\r\n")
+      (put-bytevector out #*"Content-Length: ")
+      (put-bytevector out 
+		      (string->utf8 (number->string (bytevector-length bv))))
+      (put-bytevector out #*"\r\n")
+      (put-bytevector out bv))))
 
 
 ;; TODO
@@ -296,9 +298,9 @@
 					     (fixup-status status)
 					     mime content headers))))))))
 	    (else
-	     (http-internal-server-error 
-	      out #f
-	      (utf8->string (get-bytevector-all in))))))
+	     (let ((data (get-bytevector-all in)))
+	       (http-internal-server-error out #f
+		(if (eof-object? data) "no data" (utf8->string data)))))))
     ;; close the socket
     ;; if something is still there, discard it.
     (unless (null? (socket-read-select 0 socket))
