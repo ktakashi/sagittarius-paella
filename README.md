@@ -140,6 +140,44 @@ Returns the header of given HTTP parameter. This is only relevant if the
 request is multpart form data. Other request parameter returns `()`.
 
 
+Creating a handler
+------------------
+
+A handler is a procedure which accept either 1 or 2 argument depending
+on the context, see `make-http-server-dispatcher` description, and returns
+at least 3 values, status, mime and content, respectively. The procedure
+can return more than 3 values and the rest of the values are treated
+as HTTP headers.
+
+For example, you want to make a POST handler which retrieves all request
+data (and discards, in this example), then send back extra headers. The
+handler would look like this.
+
+```scheme
+(import (rnrs) (paella))
+
+(define (post-handler req)
+  (get-bytevector-all (http-request-source req))
+  (values 200 'text/plain "Done"
+          '("x-my-header" "header-value")))
+
+```
+
+The first returning value can be a list of integer and string. The integer
+is the HTTP status and string is its description. So the above handler
+can also be like this:
+
+```scheme
+(import (rnrs) (paella))
+
+(define (post-handler req)
+  (get-bytevector-all (http-request-source req))
+  (values '(200 "OK OK") 'text/plain "Done"
+          '("x-my-header" "header-value")))
+
+```
+
+
 Supporting version
 ------------------
 
