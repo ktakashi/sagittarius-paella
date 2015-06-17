@@ -127,6 +127,10 @@
 					(c comp))))
 	     #f)))
 
+;; string is text element
+(define-method tapas-visit-component ((o <string>) proc)
+  (proc o))
+
 (define-method tapas-visit-component ((o <tapas-component>) proc)
   (proc o))
 
