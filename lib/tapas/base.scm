@@ -42,6 +42,10 @@
 
 	    tapas-page-add-headers!
 	    ;; TODO remove attribute
+
+	    ;; utilities
+	    tapas-find-component
+	    tapas-visit-component
 	    )
     (import (rnrs)
 	    (rnrs mutable-pairs)
@@ -114,6 +118,26 @@
   (let ((hdrs (~ page 'headers)))
     (set! (~ page 'headers) (append! hdrs headers))
     page))
-    
+
+(define (tapas-find-component proc component)
+  (call/cc (lambda (c)
+	     (tapas-visit-component component
+				    (lambda (comp)
+				      (when (proc comp)
+					(c comp))))
+	     #f)))
+
+(define-method tapas-visit-component ((o <tapas-component>) proc)
+  (proc o))
+
+(define-method tapas-visit-component ((o <tapas-container>) proc)
+  (proc o)
+  (for-each proc (~ o 'components)))
+
+(define-method tapas-visit-component ((o <tapas-page>) proc)
+  (proc o)
+  (for-each proc (~ o 'components))
+  (for-each proc (~ o 'headers)))
+
 
   )
