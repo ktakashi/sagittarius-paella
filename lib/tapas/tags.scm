@@ -62,14 +62,17 @@
    (name :init-keyword :name :init-value #f)
    (value :init-keyword :value :init-value #f)))
 
+;; the same as (tapas base)
+(define (safe-set-attr! elem component slot)
+  (when (and (slot-bound? component slot) (~ component slot))
+    (sxml:set-attr! elem (list slot (~ component slot)))))
+
 (define-method tapas-render-component ((form <tapas-input>))
   (let ((this (call-next-method)))
     (sxml:change-name! this 'input)
-    (sxml:set-attr! this (list 'type (~ form 'type)))
-    (when (~ form 'name)
-      (sxml:set-attr! this (list 'name (~ form 'name))))
-    (when (~ form 'value)
-      (sxml:set-attr! this (list 'value (~ form 'value))))
+    (safe-set-attr! this form 'type)
+    (safe-set-attr! this form 'name)
+    (safe-set-attr! this form 'value)
     this))
 
 (define-class <tapas-textarea> (<tapas-input>) 
@@ -79,10 +82,8 @@
 (define-method tapas-render-component ((form <tapas-textarea>))
   (let ((this (call-next-method)))
     (sxml:change-name! this 'textarea)
-    (when (slot-bound? form 'rows)
-      (sxml:add-attr! this (list 'rows (~ form 'rows))))
-    (when (slot-bound? form 'cols)
-      (sxml:add-attr! this (list 'cols (~ form 'cols))))
+    (safe-set-attr! this form 'rows)
+    (safe-set-attr! this form 'cols)
     ;; remove type
     (sxml:change-attrlist! this
      (remp (lambda (slot)
@@ -97,7 +98,7 @@
 (define-method tapas-render-component ((link <tapas-link>))
   (let ((this (call-next-method)))
     (sxml:change-name! this 'a)
-    (sxml:set-attr! this (list 'href (~ link 'href)))
+    (safe-set-attr! this link 'href)
     this))
 
 ;;; br

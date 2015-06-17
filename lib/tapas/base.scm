@@ -61,6 +61,7 @@
    ;; so that extended component can have options where
    ;; they want to put tag name.
    (tag-name :init-keyword :tag-name :init-value #f) ;; tag name
+   (class :init-keyword :class :init-value #f)
    (attributes :init-keyword :attributes :init-value '()) ;; alist
    (content :init-keyword :content :init-value #f)))
 
@@ -78,12 +79,18 @@
 ;; in SXML, text element is the same as string
 (define-method tapas-render-component ((text <string>)) text)
 
+(define (safe-set-attr! elem component slot)
+  (when (and (slot-bound? component slot) (~ component slot))
+    (sxml:set-attr! elem (list slot (~ component slot)))))
+
 (define-method tapas-render-component ((comp <tapas-component>))
-  `(,(~ comp 'tag-name) (@ ,@(if (~ comp 'id) `((id ,(~ comp 'id))) '())
-			   ,@(~ comp 'attributes))
-    ,@(if (~ comp 'content)
-	  (list (~ comp 'content))
-	  '())))
+  (let ((r `(,(~ comp 'tag-name) (@ ,@(~ comp 'attributes))
+	     ,@(if (~ comp 'content)
+		   (list (~ comp 'content))
+		   '()))))
+    (safe-set-attr! r comp 'id)
+    (safe-set-attr! r comp 'class)
+    r))
 
 (define-method tapas-render-component ((comp <tapas-container>))
   (let ((this (call-next-method)))
