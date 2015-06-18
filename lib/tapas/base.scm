@@ -71,8 +71,8 @@
 (define-class <tapas-container> (<tapas-component>)
   ((components :init-keyword :components :init-value '())))
 (define-method initialize ((o <tapas-container>) initargs)
-  (set! (~ o 'tag-name) 'div) ;; default div
   (call-next-method)
+  (unless (~ o 'tag-name) (set! (~ o 'tag-name) 'div)) ;; default div
   o)
 
 (define-class <tapas-page> (<tapas-container>)
@@ -122,7 +122,6 @@
     component))
 
 (define (tapas-add-components! container . components)
-  ;; this replace attr
   (let ((comps (~ container 'components)))
     (set! (~ container 'components) (append! comps components))
     container))
