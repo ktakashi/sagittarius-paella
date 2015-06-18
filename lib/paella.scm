@@ -36,6 +36,7 @@
 	    make-http-server-config
 	    *http-not-found-handler*
 	    make-http-server-dispatcher
+	    http-add-dispatcher!
 
 	    ;; records
 	    ;; request
@@ -97,15 +98,13 @@
      (make-http-server-dispatcher "dispatch" table (next ...)))
     ((_ "dispatch" table ((method * handler) next ...))
      (let ((p handler))
-       (hashtable-set! table (http-make-path-entry 
-			      (symbol->string 'method) "*")
-		       (lambda (req)
-			 (p req (mapped-path->alist table))))
+       (http-add-dispatcher! table 'method "*"
+			     (lambda (req)
+			       (p req (mapped-path->alist table))))
        (make-http-server-dispatcher "dispatch" table (next ...))))
     ((_ "dispatch" table ((method path handler) next ...))
      (let ((p handler))
-       (hashtable-set! table (http-make-path-entry
-			      (symbol->string 'method) path) p)
+       (http-add-dispatcher! table 'method path p)
        (make-http-server-dispatcher "dispatch" table (next ...))))
     ;; done
     ((_ "dispatch" table ()) (begin))
@@ -114,6 +113,10 @@
      (let ((r (make-string-hashtable)))
        (make-http-server-dispatcher "dispatch" r (specs ...))
        r))))
+
+(define (http-add-dispatcher! dispacher method path handler)
+  (hashtable-set! dispacher (http-make-path-entry (symbol->string method) path)
+		  handler))
 
 (define-record-type (<http-request> make-http-request http-request?)
   (fields (immutable method  http-request-method)
