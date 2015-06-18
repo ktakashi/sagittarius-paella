@@ -29,13 +29,12 @@
 ;;;  
 
 (library (tapas base)
-    (export ;; base components
+    (export &tapas tapas-error? make-tapas-error ;; conditions
+	    ;; base components
 	    tapas-render-component
 	    <tapas-component>
 	    <tapas-container>
 	    <tapas-page>
-
-	    make-tapas-simple-tag
 
 	    tapas-set-attribute!
 	    tapas-add-components!
@@ -53,7 +52,11 @@
 	    (clos user)
 	    (sagittarius)
 	    (sagittarius object)
-	    (text sxml tools))
+	    (text sxml tools)
+	    (srfi :26 cut))
+
+(define-condition-type &tapas &error
+  make-tapas-error tapas-error?)
 
 (define-class <tapas-component> ()
   ((id :init-keyword :id :init-value #f)
@@ -67,6 +70,10 @@
 
 (define-class <tapas-container> (<tapas-component>)
   ((components :init-keyword :components :init-value '())))
+(define-method initialize ((o <tapas-container>) initargs)
+  (set! (~ o 'tag-name) 'div) ;; default div
+  (call-next-method)
+  o)
 
 (define-class <tapas-page> (<tapas-container>)
   ((headers :init-keyword :headers :init-value '())))
@@ -143,12 +150,12 @@
 
 (define-method tapas-visit-component ((o <tapas-container>) proc)
   (proc o)
-  (for-each proc (~ o 'components)))
+  (for-each (cut tapas-visit-component <> proc) (~ o 'components)))
 
 (define-method tapas-visit-component ((o <tapas-page>) proc)
   (proc o)
-  (for-each proc (~ o 'components))
-  (for-each proc (~ o 'headers)))
+  (for-each (cut tapas-visit-component <> proc) (~ o 'components))
+  (for-each (cut tapas-visit-component <> proc) (~ o 'headers)))
 
 
   )

@@ -34,38 +34,58 @@
 	    <tapas-textarea>
 
 	    <tapas-link>
+
 	    <tapas-br>
 	    ;; utilities
 	    tapas:br
-	    make-tapas-simple-tag)
+	    make-tapas-simple-tag
+
+	    &tapas-tag tapas-tag-error? tapas-tag-element
+	    )
     (import (rnrs)
 	    (clos user)
+	    (clos core)
 	    (sagittarius object)
 	    (tapas handler)
 	    (tapas base)
 	    (text sxml tools))
 
+(define-condition-type &tapas-tag &tapas
+  make-tapas-tag-error tapas-tag-error?
+  (element tapas-tag-element))
+
+(define (tapas-tag-error elem who msg . irr)
+  (raise (condition
+	  (make-tapas-tag-error elem)
+	  (make-who-condition (or who (class-name (class-of elem))))
+	  (make-message-condition msg)
+	  (make-irritants-condition irr))))
+
+;; the same as (tapas base)
+(define (safe-set-attr! elem component slot)
+  (when (and (slot-bound? component slot) (~ component slot))
+    (sxml:set-attr! elem (list slot (~ component slot)))))
+
 ;;; form
 (define-class <tapas-form> (<tapas-container>) 
   ((method :init-keyword :method :init-value "GET")
-   (action :init-keyword :action :init-value #f)))
+   (action :init-keyword :action :init-value #f)
+   (enctype :init-keyword :enctype :init-value #f)))
 
 (define-method tapas-render-component ((form <tapas-form>))
+  (unless (or (slot-bound? form 'action) (~ form 'action))
+    (tapas-tag-error form #f "action is mandatory" 'action))
   (let ((this (call-next-method)))
     (sxml:change-name! this 'form)
     (sxml:set-attr! this (list 'action (~ form 'action)))
     (sxml:set-attr! this (list 'method (~ form 'method)))
+    (safe-set-attr! this form 'enctype)
     this))
 
 (define-class <tapas-input> (<tapas-component>) 
   ((type :init-keyword :type :init-value "text")
    (name :init-keyword :name :init-value #f)
    (value :init-keyword :value :init-value #f)))
-
-;; the same as (tapas base)
-(define (safe-set-attr! elem component slot)
-  (when (and (slot-bound? component slot) (~ component slot))
-    (sxml:set-attr! elem (list slot (~ component slot)))))
 
 (define-method tapas-render-component ((form <tapas-input>))
   (let ((this (call-next-method)))
