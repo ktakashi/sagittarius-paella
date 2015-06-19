@@ -87,10 +87,11 @@
 			 obj))))
 		;; TODO should we handle known tags?
 		(else
-		 (if (null? (cdr content))
+		 (if (or (null? content) (null? (cdr content)))
 		     (let ((obj (make <tapas-component>)))
 		       (set! (~ obj 'tag-name) tag)
-		       (set! (~ obj 'content) content)
+		       (unless (null? content)
+			 (set! (~ obj 'content) content))
 		       (set-attr obj <tapas-component> attr)
 		       obj)
 		     (let ((obj (make <tapas-container>)))
