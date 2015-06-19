@@ -73,7 +73,7 @@
    (enctype :init-keyword :enctype :init-value #f)))
 
 (define-method tapas-render-component ((form <tapas-form>))
-  (unless (or (slot-bound? form 'action) (~ form 'action))
+  (unless (and (slot-bound? form 'action) (~ form 'action))
     (tapas-tag-error form #f "action is mandatory" 'action))
   (let ((this (call-next-method)))
     (sxml:change-name! this 'form)

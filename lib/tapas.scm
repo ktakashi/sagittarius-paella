@@ -32,4 +32,5 @@
     (export :all)
     (import (tapas handler)
 	    (tapas base)
-	    (tapas tags)))
+	    (tapas tags)
+	    (tapas html)))

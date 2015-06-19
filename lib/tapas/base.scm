@@ -85,6 +85,8 @@
 
 ;; in SXML, text element is the same as string
 (define-method tapas-render-component ((text <string>)) text)
+;; raw SXML
+(define-method tapas-render-component ((sxml <pair>)) sxml)
 
 (define (safe-set-attr! elem component slot)
   (when (and (slot-bound? component slot) (~ component slot))
@@ -92,8 +94,12 @@
 
 (define-method tapas-render-component ((comp <tapas-component>))
   (let ((r `(,(~ comp 'tag-name) (@ ,@(~ comp 'attributes))
-	     ,@(if (~ comp 'content)
-		   (list (~ comp 'content))
+	     ,@(or (and-let* ((content (~ comp 'content)))
+		     ;; if this is a string, then just return
+		     ;; this makes a bit convenient.
+		     (if (string? content)
+			 (list content)
+			 (tapas-render-component (~ comp 'content))))
 		   '()))))
     (safe-set-attr! r comp 'id)
     (safe-set-attr! r comp 'class)
