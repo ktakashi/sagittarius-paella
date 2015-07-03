@@ -44,7 +44,7 @@ procedure returns `$root/apps/app1`.
 Handler library
 ---------------
 
-Each `handler.scm` must contains a library named `(ploto webapp $app)` where
+Each `handler.scm` must contains a library named `(plato webapp $app)` where
 `$app` is the name of the web application.
 
 The library must export 2 procedures: `support-methods` and `entry-point`.

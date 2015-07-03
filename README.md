@@ -5,7 +5,7 @@ Paella is a simple HTTP server framework for Sagittarius Scheme. The
 server itself is based on `(net server)` library.
 
 This repository contains `(tapas)` which is a simple CLOS based HTTP
-component framework and `(ploto)` which is a simple web application
+component framework and `(plato)` which is a simple web application
 framework.
 
 
@@ -35,7 +35,7 @@ Documents
 
 - Paella: [Paella reference manual](docs/paella.md)
 - Tapas: [Tapas reference manual](docs/tapas.md)
-- Ploto: [Ploto reference manual](docs/ploto.md)
+- Plato: [Plato reference manual](docs/plato.md)
 
 Supporting version
 ------------------
