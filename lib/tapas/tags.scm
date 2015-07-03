@@ -32,10 +32,13 @@
     (export <tapas-form>
 	    <tapas-input>
 	    <tapas-textarea>
+	    <tapas-select>
+	    <tapas-option>
 
 	    <tapas-link>
-
 	    <tapas-br>
+
+	    <tapas-script>
 	    ;; utilities
 	    tapas:br
 	    make-tapas-simple-tag
@@ -110,6 +113,22 @@
 	     (eq? (car slot) 'type)) (sxml:attr-list this)))
     this))
 
+;; TODO should this be a subclass of <tapas-input>?
+(define-class <tapas-select> (<tapas-container>) 
+  ((name :init-keyword :name :init-value #f)))
+(define-method tapas-render-component ((s <tapas-select>))
+  (let ((this (call-next-method)))
+    (sxml:change-name! this 'select)
+    (safe-set-attr! this s 'name)
+    this))
+
+(define-class <tapas-option> (<tapas-input>) 
+  ((selected :init-keyword :selected :init-value #f)))
+(define-method tapas-render-component ((o <tapas-option>))
+  (let ((this (call-next-method)))
+    (sxml:change-name! this 'option)
+    (when (~ o 'selected) (sxml:set-attr! this (list 'selected "true")))
+    this))
 
 ;;; link
 (define-class <tapas-link> (<tapas-component>) 
@@ -127,6 +146,22 @@
   (call-next-method)
   (set! (~ o 'tag-name) 'br)
   o)
+
+(define-class <tapas-script> (<tapas-component>)
+  ((type :init-keyword :type :init-value #f)
+   (src :init-keyword :src :init-value #f)
+   (charset :init-keyword :charset :init-value #f)
+   (async :init-keyword :async :init-value #f)
+   (defer :init-keyword :defer :init-value #f)))
+(define-method tapas-render-component ((s <tapas-script>))
+  (let ((this (call-next-method)))
+    (sxml:change-name! this 'script)
+    (safe-set-attr! this s 'type)
+    (safe-set-attr! this s 'src)
+    (safe-set-attr! this s 'charset)
+    (safe-set-attr! this s 'async)
+    (safe-set-attr! this s 'defer)
+    this))
 
 ;;; utility
 (define tapas:br (make <tapas-br>))

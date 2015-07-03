@@ -55,6 +55,9 @@
 	    ;; default handler
 	    http-file-handler
 	    http-registered-path-handler
+
+	    ;; for convenience
+	    http-mapped-path->alist
 	    )
     (import (rnrs)
 	    (net server)
@@ -81,7 +84,7 @@
 (define (make-http-server-config . opt)
   (apply make-server-config :non-blocking? #t opt))
 
-(define (mapped-path->alist dispatcher)
+(define (http-mapped-path->alist dispatcher)
   (map (lambda (p)
 	 (string-split p ":"))
        (hashtable-keys-list dispatcher)))
@@ -100,7 +103,7 @@
      (let ((p handler))
        (http-add-dispatcher! table 'method "*"
 			     (lambda (req)
-			       (p req (mapped-path->alist table))))
+			       (p req (http-mapped-path->alist table))))
        (make-http-server-dispatcher "dispatch" table (next ...))))
     ((_ "dispatch" table ((method path handler) next ...))
      (let ((p handler))
