@@ -175,6 +175,19 @@
 	     (else
 	      (error 'http-emit-response "unknown type" content))))))
   (define get-header rfc5322-header-ref)
+  (define (send-chunked-data out content)
+    (define size 1024)
+    (define buf (make-bytevector size))
+    (define (send-chunk out n buf)
+      (put-bytevector out (string->utf8 (number->string n 16)))
+      (put-bytevector out #*"\r\n")
+      (put-bytevector out buf 0 n)
+      (put-bytevector out #*"\r\n"))
+    (let loop ((n (get-bytevector-n! content buf 0 size)))
+      (cond ((eof-object? n) (send-chunk out 0 #vu8()))
+	    ((< n size) (send-chunk out n buf) (send-chunk out 0 #vu8()))
+	    (else (send-chunk out n buf)
+		  (loop (get-bytevector-n! content buf 0 size))))))
 
   (let-values (((mime size content) (get-content mime content)))
     (let ((content-type (or (get-header headers "content-type") mime))
@@ -189,9 +202,11 @@
 			   (format "~a ~a\r\n" (car status) (cadr status))))
       (put-bytevector out (string->utf8
 			   (format "Content-Type: ~a\r\n" content-type)))
-      (when content-length
-	(put-bytevector out (string->utf8
-			     (format "Content-Length: ~a\r\n" content-length))))
+      (if content-length
+	  (put-bytevector out
+			  (string->utf8
+			   (format "Content-Length: ~a\r\n" content-length)))
+	  (put-bytevector out #*"Transfer-Encoding: chunked\r\n"))
       (put-bytevector out (string->utf8
 			   (format "Server: ~a\r\n" (*http-server-name*))))
       (for-each (lambda (slot)
@@ -201,7 +216,9 @@
 		    (format "~a: ~a\r\n" (car slot) (cadr slot)))))
 		headers)
       (put-bytevector out #*"\r\n")
-      (copy-binary-port out content)
+      (if content-length
+	  (copy-binary-port out content)
+	  (send-chunked-data out content))
       (close-port content))))
 
 ;; TODO
