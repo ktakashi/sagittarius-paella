@@ -60,6 +60,9 @@
 
 	    ;; for convenience
 	    http-mapped-path->alist
+
+	    ;; parameters
+	    *http-server-name*
 	    )
     (import (rnrs)
 	    (net server)
@@ -80,6 +83,7 @@
   (values 404 'text/plain "Not Found"))
 
 (define *http-not-found-handler* (make-parameter default-not-found-handler))
+(define *http-server-name* (make-parameter "Sagittarius Paella"))
 
 (define (http-make-path-entry method path)
   (string-append method ":" path))
@@ -176,8 +180,9 @@
     (let ((content-type (or (get-header headers "content-type") mime))
 	  (content-length (or (get-header headers "content-length") size))
 	  (headers (remp (lambda (slot)
-			   (or (string=? (car slot) "content-length")
-			       (string=? (car slot) "content-type")))
+			   (or (string-ci=? (car slot) "content-length")
+			       (string-ci=? (car slot) "content-type")
+			       (string-ci=? (car slot) "server")))
 			 headers)))
       (put-bytevector out #*"HTTP/1.1 ")
       (put-bytevector out (string->utf8 
@@ -187,6 +192,8 @@
       (when content-length
 	(put-bytevector out (string->utf8
 			     (format "Content-Length: ~a\r\n" content-length))))
+      (put-bytevector out (string->utf8
+			   (format "Server: ~a\r\n" (*http-server-name*))))
       (for-each (lambda (slot)
 		  (put-bytevector 
 		   out 
