@@ -44,7 +44,9 @@
 	    http-request-method
 	    http-request-path
 	    http-request-uri
+	    http-request-headers
 	    http-request-parameters
+	    http-request-cookies
 	    http-request-source
 	    ;; parameter
 	    http-parameter?
@@ -64,6 +66,7 @@
 	    (rfc mime) 
 	    (rfc :5322)
 	    (rfc uri)
+	    (rfc cookie)
 	    (sagittarius)
 	    (sagittarius regex)
 	    (sagittarius socket)
@@ -128,6 +131,8 @@
 	  (immutable headers http-request-headers)
 	  ;; alist of query name and http-parameter object.
 	  (immutable parameters http-request-parameters)
+	  ;; cookies
+	  (immutable cookies http-request-cookies)
 	  ;; raw POST?
 	  (immutable source  http-request-source)))
 (define-record-type (<http-parameter> make-http-parameter http-parameter?)
@@ -283,6 +288,14 @@
 	      ((hashtable-ref dispatcher (http-make-path-entry method "*")
 			      (*http-not-found-handler*))))))
 
+    (define (parse-cookie headers)
+      (fold-left (lambda (acc header)
+		   ;; we know the header name is downcased but
+		   ;; use string-ci=?
+		   (if (string-ci=? "cookie" (car header))
+		       (cons (parse-cookie-string (cadr header)) acc)
+		       acc)) '() headers))
+
     (let ((first (binary:get-line in)))
       (cond ((#/(\w+)\s+([^\s]+)\s+HTTP\/([\d\.]+)/ first) =>
 	     (lambda (m)
@@ -292,14 +305,15 @@
 		      (headers (rfc5322-read-headers in)))
 		 (let-values (((path qs frg) (parse-path opath)))
 		   (let ((handler (lookup-handler method path))
-			 (params (append qs (parse-mime headers in))))
+			 (params (append qs (parse-mime headers in)))
+			 (cookies (parse-cookie headers)))
 		     (guard (e (else
 				(http-internal-server-error out e headers)))
 		       (let-values (((status mime content . headers)
 				     ;; TODO proper http request
 				     (handler (make-http-request
 					       method path opath 
-					       headers params in))))
+					       headers params cookies in))))
 			 (http-emit-response out 
 					     (fixup-status status)
 					     mime content headers))))))))

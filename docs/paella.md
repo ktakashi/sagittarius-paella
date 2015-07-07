@@ -74,6 +74,10 @@ Retrieves requested path of this request.
 Retrieves original requested path of this request. This may contains
 query string or fragment.
 
+### `(http-request-headers request)` - Procedure
+
+Retrieves raw request header of this request as an alist.
+
 ### `(http-request-parameters request)` - Procedure
 
 Retrieves request parameters of this request. The handled parameters are
@@ -88,6 +92,10 @@ object.
 
 Other types of request data will remain int the `source` of this request
 object.
+
+### `(http-request-cookies request)` - Procedure
+
+Retrieves a list of cookie of this request.
 
 ### `(http-request-source request)` - Procedure
 
