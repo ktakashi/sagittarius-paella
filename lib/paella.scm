@@ -70,6 +70,8 @@
 	    (rfc :5322)
 	    (rfc uri)
 	    (rfc cookie)
+	    ;; should we move this to (sagittarius conditions) or so?
+	    (core conditions)
 	    (sagittarius)
 	    (sagittarius regex)
 	    (sagittarius socket)
@@ -77,7 +79,8 @@
 	    (util port)
 	    (prefix (binary io) binary:) 
 	    (text sxml serializer)
-	    (text sxml html-parser))
+	    (text sxml html-parser)
+	    (pp))
 
 (define (default-not-found-handler req)
   (values 404 'text/plain "Not Found"))
@@ -223,16 +226,31 @@
 
 ;; TODO
 (define (http-internal-server-error out e header?)
+  (define (format-condition e)
+    (let-values (((out extract) (open-string-output-port)))
+      (let loop ((e e))
+	(report-error e out)
+	(when (and (stack-trace-condition? e) (condition-cause e))
+	  (loop (condition-cause e))))
+      (extract)))
+  (define (format-header header?)
+    (if header?
+	(let-values (((out extract) (open-string-output-port)))
+	  (pp header? out)
+	  (extract))
+	header?))
+
   (guard (e (else #f))
-    (let* ((content (format "Server Error\r\n condition:~a\r\n headers: ~a\r\n"
-			    e header?))
+    (let* ((content 
+	    (format "Server Error\r\nheaders:\r\n~a\r\ncondition:\r\n~a\r\n"
+		    (format-header header?) (format-condition e)))
 	   (bv (string->utf8 content)))
       (put-bytevector out #*"HTTP/1.1 500 Internal Server Error\r\n")
-      (put-bytevector out #*"Content-Type: text/plain\r\n\r\n")
       (put-bytevector out #*"Content-Length: ")
       (put-bytevector out 
 		      (string->utf8 (number->string (bytevector-length bv))))
       (put-bytevector out #*"\r\n")
+      (put-bytevector out #*"Content-Type: text/plain\r\n\r\n")
       (put-bytevector out bv))))
 
 
