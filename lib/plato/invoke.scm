@@ -34,7 +34,7 @@
 	    plato-make-dispatcher
 	    plato-run
 	    plato-collect-handler
-	    plat-load
+	    plato-load
 	    ;; for tools
 	    +plato-handler-file+
 	    +plato-lib-dir+
