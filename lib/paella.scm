@@ -70,6 +70,7 @@
 	    (rfc :5322)
 	    (rfc uri)
 	    (rfc cookie)
+	    (rfc gzip)
 	    ;; should we move this to (sagittarius conditions) or so?
 	    (core conditions)
 	    (sagittarius)
@@ -148,7 +149,7 @@
 	  ;; if it's mime
 	  (immutable headers http-parameter-headers)))
 
-(define (http-emit-response out status mime content headers)
+(define (http-emit-response out request-headers status mime content headers)
   (define (get-content mime content)
     (case mime
       ((shtml) 
@@ -187,29 +188,41 @@
       (put-bytevector out buf 0 n)
       (put-bytevector out #*"\r\n"))
     (let loop ((n (get-bytevector-n! content buf 0 size)))
-      (cond ((eof-object? n) (send-chunk out 0 #vu8()))
-	    ((< n size) (send-chunk out n buf) (send-chunk out 0 #vu8()))
+      (cond ((eof-object? n) 
+	     (send-chunk out 0 #vu8())
+	     (flush-output-port out))
+	    ((< n size) 
+	     (send-chunk out n buf)
+	     (send-chunk out 0 #vu8())
+	     (flush-output-port out))
 	    (else (send-chunk out n buf)
 		  (loop (get-bytevector-n! content buf 0 size))))))
 
   (let-values (((mime size content) (get-content mime content)))
-    (let ((content-type (or (get-header headers "content-type") mime))
-	  (content-length (or (get-header headers "content-length") size))
-	  (headers (remp (lambda (slot)
-			   (or (string-ci=? (car slot) "content-length")
-			       (string-ci=? (car slot) "content-type")
-			       (string-ci=? (car slot) "server")))
-			 headers)))
+    (let* ((content-type (or (get-header headers "content-type") mime))
+	   (content-length (or (get-header headers "content-length") size))
+	   (headers (remp (lambda (slot)
+			    (or (string-ci=? (car slot) "content-length")
+				(string-ci=? (car slot) "content-type")
+				(string-ci=? (car slot) "server")))
+			  headers))
+	   (accept-encoding (get-header request-headers "accept-encoding"))
+	   (gzip? (and accept-encoding (#/gzip.+?deflate/ accept-encoding))))
       (put-bytevector out #*"HTTP/1.1 ")
       (put-bytevector out (string->utf8 
 			   (format "~a ~a\r\n" (car status) (cadr status))))
       (put-bytevector out (string->utf8
 			   (format "Content-Type: ~a\r\n" content-type)))
-      (if content-length
-	  (put-bytevector out
-			  (string->utf8
-			   (format "Content-Length: ~a\r\n" content-length)))
-	  (put-bytevector out #*"Transfer-Encoding: chunked\r\n"))
+      (cond (gzip? 
+	     (put-bytevector out #*"Vary: Accept-Encoding \r\n")
+	     (put-bytevector out #*"Content-Encoding: gzip\r\n"))
+	    (content-length
+	     (put-bytevector out
+			     (string->utf8
+			      (format "Content-Length: ~a\r\n"
+				      content-length))))
+	    (else (put-bytevector out #*"Transfer-Encoding: chunked\r\n")))
+
       (put-bytevector out (string->utf8
 			   (format "Server: ~a\r\n" (*http-server-name*))))
       (for-each (lambda (slot)
@@ -219,9 +232,12 @@
 		    (format "~a: ~a\r\n" (car slot) (cadr slot)))))
 		headers)
       (put-bytevector out #*"\r\n")
-      (if content-length
-	  (copy-binary-port out content)
-	  (send-chunked-data out content))
+      (cond (gzip? 
+	     (let ((gout (open-gzip-output-port out)))
+	       (copy-binary-port gout content)
+	       (close-output-port gout)))
+	     (content-type (copy-binary-port out content))
+	    (else (send-chunked-data out content)))
       (close-port content))))
 
 ;; TODO
@@ -390,14 +406,15 @@
 			 (cookies (parse-cookie headers)))
 		     (guard (e (else
 				(http-internal-server-error out e headers)))
-		       (let-values (((status mime content . headers)
+		       (let-values (((status mime content . response-headers)
 				     ;; TODO proper http request
 				     (handler (make-http-request
 					       method path opath 
 					       headers params cookies in))))
-			 (http-emit-response out 
+			 (http-emit-response out headers
 					     (fixup-status status)
-					     mime content headers))))))))
+					     mime content
+					     response-headers))))))))
 	    (else
 	     (let ((data (get-bytevector-all in)))
 	       (http-internal-server-error out #f
