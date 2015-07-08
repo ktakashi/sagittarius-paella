@@ -150,79 +150,108 @@
 	  (immutable headers http-parameter-headers)))
 
 (define (http-emit-response out request-headers status mime content headers)
-  (define (get-content mime content)
+  (define (get-content mime content gzip?)
+    (define (do-compress content)
+      (if gzip?
+	  (let-values (((out extract) (open-bytevector-output-port)))
+	    (let ((gout (open-gzip-output-port out)))
+	      (put-bytevector gout content)
+	      (close-output-port gout)
+	      (extract)))
+	  content))
     (case mime
       ((shtml) 
        ;; TODO UTF-8?
-       (let ((bv (string->utf8 (shtml->html content))))
+       (let ((bv (do-compress (string->utf8 (shtml->html content)))))
 	 (values "text/html" (bytevector-length bv)
-		 (open-bytevector-input-port bv))))
+		 (open-bytevector-input-port bv)
+		 gzip?)))
       ((sxml)
-       (let ((bv (string->utf8 (srl:sxml->xml content))))
+       (let ((bv (do-compress (string->utf8 (srl:sxml->xml content)))))
 	 (values "text/html" (bytevector-length bv)
-		 (open-bytevector-input-port bv))))
+		 (open-bytevector-input-port bv)
+		 gzip?)))
       ((file)
+       ;; we don't want neither sending with chunk nor compressing
+       ;; in case of huge file. so get size and just dump it
+       ;; I don't care about network trafic for this!
        (let ((size (file-size-in-bytes content)))
 	 (values "application/octet-stream" size
-		 (open-file-input-port content (file-options no-fail)))))
+		 (open-file-input-port content (file-options no-fail))
+		 #f)))
       ;; TODO 
       (else
        (cond ((string? content)
-	      (let ((bv (string->utf8 content)))
+	      (let ((bv (do-compress (string->utf8 content))))
 		(values mime (bytevector-length bv)
-			(open-bytevector-input-port bv))))
+			(open-bytevector-input-port bv) gzip?)))
 	     ((bytevector? content)
-	      (values mime (bytevector-length content)
-		      (open-bytevector-input-port content)))
+	      (let ((bv (do-compress content)))
+		(values mime (bytevector-length bv)
+			(open-bytevector-input-port bv) gzip?)))
 	     ((and (binary-port? content) (input-port? content))
-	      (values mime #f content))
+	      ;; size is unknown thus chunk
+	      (values mime #f content gzip?))
 	     (else
 	      (error 'http-emit-response "unknown type" content))))))
   (define get-header rfc5322-header-ref)
-  (define (send-chunked-data out content)
+  ;; slightly memory efficient...
+  (define (gzipped-port ocontent)
+    (define buf (binary:open-chunked-binary-input/output-port))
+    (define gout (open-gzip-output-port buf))
+    (copy-binary-port gout ocontent)
+    (close-output-port gout)
+    (set-port-position! buf 0)
+    buf)
+  (define (send-chunked-data out ocontent gzip?)
     (define size 1024)
     (define buf (make-bytevector size))
+    (define content (if gzip?
+			(gzipped-port ocontent)
+			ocontent))
+    (define (finish)
+      (send-chunk out 0 #vu8())
+      (flush-output-port out))
     (define (send-chunk out n buf)
       (put-bytevector out (string->utf8 (number->string n 16)))
       (put-bytevector out #*"\r\n")
       (put-bytevector out buf 0 n)
       (put-bytevector out #*"\r\n"))
     (let loop ((n (get-bytevector-n! content buf 0 size)))
-      (cond ((eof-object? n) 
-	     (send-chunk out 0 #vu8())
-	     (flush-output-port out))
+      (cond ((eof-object? n) (finish))
 	    ((< n size) 
 	     (send-chunk out n buf)
-	     (send-chunk out 0 #vu8())
-	     (flush-output-port out))
+	     (finish))
 	    (else (send-chunk out n buf)
 		  (loop (get-bytevector-n! content buf 0 size))))))
-
-  (let-values (((mime size content) (get-content mime content)))
-    (let* ((content-type (or (get-header headers "content-type") mime))
-	   (content-length (or (get-header headers "content-length") size))
-	   (headers (remp (lambda (slot)
-			    (or (string-ci=? (car slot) "content-length")
-				(string-ci=? (car slot) "content-type")
-				(string-ci=? (car slot) "server")))
-			  headers))
-	   (accept-encoding (get-header request-headers "accept-encoding"))
-	   (gzip? (and accept-encoding (#/gzip.+?deflate/ accept-encoding))))
+  (define gzip?
+    (and-let* ((accept-encoding (get-header request-headers "accept-encoding")))
+      (and accept-encoding (#/gzip.+?deflate/ accept-encoding))))
+  
+  (let-values (((mime size content compressed?)
+		(get-content mime content gzip?)))
+    (let ((content-type (or (get-header headers "content-type") mime))
+	  (content-length (or (get-header headers "content-length") size))
+	  (headers (remp (lambda (slot)
+			   (or (string-ci=? (car slot) "content-length")
+			       (string-ci=? (car slot) "content-type")
+			       (string-ci=? (car slot) "server")))
+			 headers)))
       (put-bytevector out #*"HTTP/1.1 ")
       (put-bytevector out (string->utf8 
 			   (format "~a ~a\r\n" (car status) (cadr status))))
       (put-bytevector out (string->utf8
 			   (format "Content-Type: ~a\r\n" content-type)))
-      (cond (gzip? 
-	     (put-bytevector out #*"Vary: Accept-Encoding \r\n")
-	     (put-bytevector out #*"Content-Encoding: gzip\r\n"))
-	    (content-length
-	     (put-bytevector out
-			     (string->utf8
-			      (format "Content-Length: ~a\r\n"
-				      content-length))))
-	    (else (put-bytevector out #*"Transfer-Encoding: chunked\r\n")))
-
+      (when compressed?
+	(put-bytevector out #*"Vary: Accept-Encoding \r\n")
+	(put-bytevector out #*"Content-Encoding: gzip\r\n"))
+      (if content-length
+	  (put-bytevector out
+			  (string->utf8
+			   (format "Content-Length: ~a\r\n"
+				   content-length)))
+	  (put-bytevector out #*"Transfer-Encoding: chunked\r\n"))
+      ;; server header
       (put-bytevector out (string->utf8
 			   (format "Server: ~a\r\n" (*http-server-name*))))
       (for-each (lambda (slot)
@@ -232,12 +261,11 @@
 		    (format "~a: ~a\r\n" (car slot) (cadr slot)))))
 		headers)
       (put-bytevector out #*"\r\n")
-      (cond (gzip? 
-	     (let ((gout (open-gzip-output-port out)))
-	       (copy-binary-port gout content)
-	       (close-output-port gout)))
-	     (content-type (copy-binary-port out content))
-	    (else (send-chunked-data out content)))
+      (if content-length ;; we don't care if this is compressed or not
+	  (copy-binary-port out content)
+	  ;; passed content was binary input-port
+	  ;; and we don't compress it ahead. so do it here
+	  (send-chunked-data out content gzip?))
       (close-port content))))
 
 ;; TODO
