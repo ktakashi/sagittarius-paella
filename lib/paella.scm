@@ -74,7 +74,6 @@
 	    (sagittarius)
 	    (sagittarius regex)
 	    (sagittarius socket)
-	    (sagittarius conditions)
 	    (srfi :39 parameters)
 	    (util port)
 	    (prefix (binary io) binary:) 
@@ -271,13 +270,7 @@
 (define (http-internal-server-error out e header?)
   (define (format-condition e)
     (let-values (((out extract) (open-string-output-port)))
-      (report-error e out) ;; very first one
-      (when (stack-trace-condition? e)
-	(let loop ((e (condition-cause e)))
-	  (display "Nested " out)
-	  (format-stack-trace (condition-stack-trace e) out)
-	  (when (and (stack-trace-condition? e) (condition-cause e))
-	    (loop (condition-cause e)))))
+      (report-error e out)
       (extract)))
   (define (format-header header?)
     (if header?
