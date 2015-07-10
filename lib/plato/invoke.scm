@@ -221,7 +221,9 @@ the context of parents.
   (unless (file-exists? work-path) (create-directory* work-path))
   (parameterize ((load-path (cons* (build-path root +plato-lib-dir+)
 				   handler-path
-				   current-load-path)))
+				   current-load-path))
+		 ;; make sure loading time can also find resource
+		 (current-directory handler-path))
     ;; TODO should we wrap with guard to make this run anyway?
     (let ((file (build-path handler-path +plato-handler-file+))
 	  ;; (plato webapp $handler) is the library name
