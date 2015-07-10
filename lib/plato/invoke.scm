@@ -41,6 +41,7 @@
 	    plato-context-root
 	    plato-current-path
 	    plato-work-path
+	    plato-parent-context
 
 	    ;; for tools
 	    +plato-handler-file+

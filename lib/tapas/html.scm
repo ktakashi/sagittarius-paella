@@ -105,9 +105,12 @@
   (define (handle-header obj shtml)
     (let ((header ((if-car-sxpath "/html/head") shtml))
 	  (body ((if-car-sxpath "/html/body") shtml)))
+      ;; head tag shouldn't have any attribute so ignore.
       (when header (set! (~ obj 'headers) (map traverse (sxml:content header))))
       (if body
-	  (sxml:content body)
+	  (begin
+	    (set! (~ obj 'body-attributes) (sxml:attr-list body))
+	    (sxml:content body))
 	  '())))
   (let ((tag (sxml:name shtml))
 	(attr (sxml:attr-list shtml))
