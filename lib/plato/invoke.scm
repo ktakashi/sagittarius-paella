@@ -35,6 +35,13 @@
 	    plato-run
 	    plato-collect-handler
 	    plato-load
+
+	    ;; context
+	    *plato-current-context*
+	    plato-context-root
+	    plato-current-path
+	    plato-work-path
+
 	    ;; for tools
 	    +plato-handler-file+
 	    +plato-lib-dir+
@@ -46,13 +53,26 @@
 	    (sagittarius)
 	    (sagittarius control)
 	    (sagittarius regex)
+	    (clos user)
+	    (match)
 	    (util file)
+	    (rfc uri)
 	    (srfi :1 lists)
 	    (srfi :39 parameters))
 
 (define-constant +plato-handler-file+ "handler.scm")
 (define-constant +plato-lib-dir+      "lib")
 (define-constant +plato-app-dir+      "apps")
+(define-constant +plato-work-dir+      "work")
+
+(define *plato-current-context* (make-parameter #f))
+
+(define-record-type (<plato-context> make-plato-context plato-context?)
+  (fields (immutable context-root plato-context-root) ;; should we?
+	  (immutable current-path plato-current-path)
+	  ;; temporary path for this context
+	  (immutable work-path    plato-work-path)
+	  (immutable parent       plato-parent-context)))
 
 #|
 Invoking a server takes 2 pass.
@@ -81,6 +101,17 @@ entry-point must be a paella http handler.
 
 The handler.scm is evaluated with library path $server-root/lib and
 where its located.
+
+The library can also provide sub contexts via mount-paths procedure.
+If this is provided, then it's all added to paths.
+e.g.) if (mount-paths) reuturns (((GET) "/bar" #<closure>))
+      then the mount path and handler is like the following:
+       supporting HTTP method: GET
+       mount-path: /handler/bar
+       handler: #<closure>
+In this case, the plato-context contains parent context field which contains
+the context of parents.
+
 |#
 (define (plato-make-dispatcher server-root)
   (let* ((handlers (plato-collect-handler server-root))
@@ -113,8 +144,80 @@ where its located.
 (define (plato-load handler root dispatcher)
   (define current-load-path (load-path))
   (define handler-path (build-path* root +plato-app-dir+ handler))
+  (define work-path (build-path* root +plato-work-dir+ handler))
   ;; allow r7rs style as well
   (define env (environment '(only (sagittarius) library define-library)))
+  (define context (make-plato-context 
+		   ;; should we make this absolute path, explicitly?
+		   root
+		   handler-path
+		   work-path
+		   #f))
+  (define (create-plato-handler proc context)
+    (lambda (req)
+      ;; TODO session
+      (parameterize ((current-directory (plato-current-path context))
+		     (*plato-current-context* context))
+	(proc req))))
+  (define (create-plato-sub-handler path handler)
+    (define (ensure-path path)
+      (define (create-if-needed path)
+	(let ((p (build-path* handler-path path)))
+	  (unless (file-exists? p) (create-directory* p))
+	  p))
+      (let ((p (regex-replace-all #/\\/ path "/")))
+	(cond ((#/^\/+(.+)/ p) => 
+	       (lambda (m) (create-if-needed (m 1))))
+	      (else (create-if-needed p)))))
+	       
+    (if (string? path)
+	(create-plato-handler 
+	 handler
+	 (make-plato-context handler-path
+			     (ensure-path path)
+			     work-path ;; TODO should we separate?
+			     context))
+	;; unfortunately, we can't determine now.
+	;; so it'll be runtime
+	(lambda (req)
+	  ;; at least at this point, it's matched
+	  (let ((uri (http-request-uri req)))
+	    (let-values (((scheme ui hs p path q f) (uri-parse uri)))
+	      ;; path must be there
+	      (let ((this-path (build-path* root +plato-app-dir+ path)))
+		(unless (file-exists? this-path) (create-directory* this-path))
+		(parameterize ((current-directory this-path)
+			       (*plato-current-context* (make-plato-context
+							 handler-path
+							 this-path
+							 work-path
+							 context)))
+		  (handler req))))))))
+  
+  (define (sub-context parent env)
+    ;; adding parent context
+    ;; if the given path contains '/' in front then remove it.
+    (define (ensure-root-context path)
+      (if (string? path)
+	  (cond ((#/^\/+(.+)/ path) => 
+		 (lambda (m) (string-append parent "/" (m 1))))
+		(else  (string-append parent "/" path)))
+	  (let ((pat (regex-pattern path)))
+	    ;; bit too naive but better than nothing
+	    (regex
+	     (cond ((#/^\/+(.+)/ pat) => 
+		    (lambda (m) (string-append "^" parent "/" (m 1))))
+		   (else  (string-append "^" parent "/" pat)))))))
+
+    (let ((sub-paths (guard (e (else '())) (eval '(mount-paths) env))))
+      (for-each (match-lambda
+		 (((methods ...) path handler)
+		  (dolist (m methods)
+		    (http-add-dispatcher!
+		     dispatcher m (ensure-root-context path)
+		     (create-plato-sub-handler path handler)))))
+		sub-paths)))
+  (unless (file-exists? work-path) (create-directory* work-path))
   (parameterize ((load-path (cons* (build-path root +plato-lib-dir+)
 				   handler-path
 				   current-load-path)))
@@ -136,9 +239,7 @@ where its located.
 	(dolist (m methods)
 	  (http-add-dispatcher! 
 	   dispatcher m path 
-	   (lambda (req)
-	     ;; TODO add context parameters
-	     (parameterize ((current-directory handler-path))
-	       (proc req)))))))))
+	   (create-plato-handler proc context)))
+	(sub-context path e)))))
 
 )

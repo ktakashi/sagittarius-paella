@@ -93,10 +93,21 @@
 (define (make-http-server-config . opt)
   (apply make-server-config :non-blocking? #t opt))
 
+;; TODO regex mapping?
 (define (http-mapped-path->alist dispatcher)
-  (map (lambda (p)
-	 (string-split p ":"))
-       (hashtable-keys-list dispatcher)))
+  (append 
+   (map (lambda (p) (string-split p ":"))
+	(hashtable-keys-list (http-dispatcher-table dispatcher)))
+   (map (lambda (p) (list (format "REGEX-~a" (cadr p)) (regex-pattern (car p))))
+	(http-dispatcher-patterns dispatcher))))
+
+(define-record-type (<http-dispatcher> make-http-dispatcher http-dispatcher?)
+  (fields (immutable table http-dispatcher-table)
+	  (mutable patterns http-dispatcher-patterns 
+		   http-dispatcher-patterns-set!))
+  (protocol (lambda (p)
+	      (lambda ()
+		(p (make-string-hashtable) '())))))
 
 (define-syntax make-http-server-dispatcher
   (syntax-rules (*)
@@ -122,13 +133,23 @@
     ((_ "dispatch" table ()) (begin))
     ;; entry point
     ((_ specs ...)
-     (let ((r (make-string-hashtable)))
+     (let ((r (make-http-dispatcher)))
        (make-http-server-dispatcher "dispatch" r (specs ...))
        r))))
 
-(define (http-add-dispatcher! dispacher method path handler)
-  (hashtable-set! dispacher (http-make-path-entry (symbol->string method) path)
-		  handler))
+(define (http-add-dispatcher! dispatcher method path handler)
+  (cond ((string? path)
+	 (hashtable-set! (http-dispatcher-table dispatcher)
+			 (http-make-path-entry (symbol->string method) path)
+			 handler))
+	((regex-pattern? path)
+	 (let ((p (http-dispatcher-patterns dispatcher)))
+	   (http-dispatcher-patterns-set! dispatcher 
+	     (cons (cons* path (symbol->string method) handler) p))))
+	(else
+	 (assertion-violation 'http-add-dispatcher!
+			      "string or regex pattern required" path))))
+
 
 (define-record-type (<http-request> make-http-request http-request?)
   (fields (immutable method  http-request-method)
@@ -402,10 +423,17 @@
     (define (parse-path path)
       (let-values (((s ui h p path qs frag) (uri-parse path)))
 	(values path (if qs (query-string->alist qs) '()) frag)))
-    (define (lookup-handler method path)
-      (let ((path (http-make-path-entry method path)))
-	(cond ((hashtable-ref dispatcher path #f))
-	      ((hashtable-ref dispatcher (http-make-path-entry method "*")
+    (define (lookup-handler method opath)
+      (define (match? path patterns)
+	(find (lambda (pattern) 
+		(and ((car pattern) path) (string=? method (cadr pattern))))
+		patterns))
+      (let ((table (http-dispatcher-table dispatcher))
+	    (pattern (http-dispatcher-patterns dispatcher))
+	    (path (http-make-path-entry method opath)))
+	(cond ((hashtable-ref table path #f))
+	      ((match? opath pattern) => cddr)
+	      ((hashtable-ref table (http-make-path-entry method "*")
 			      (*http-not-found-handler*))))))
 
     (define (parse-cookie headers)
