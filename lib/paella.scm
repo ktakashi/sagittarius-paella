@@ -65,6 +65,7 @@
 	    *http-server-name*
 	    )
     (import (rnrs)
+	    (rnrs mutable-pairs)
 	    (net server)
 	    (rfc mime) 
 	    (rfc :5322)
@@ -98,7 +99,7 @@
   (append 
    (map (lambda (p) (string-split p ":"))
 	(hashtable-keys-list (http-dispatcher-table dispatcher)))
-   (map (lambda (p) (list (format "REGEX-~a" (cadr p)) (regex-pattern (car p))))
+   (map (lambda (p) (list (format "REGEX-~a" (cdar p)) (regex-pattern (caar p))))
 	(http-dispatcher-patterns dispatcher))))
 
 (define-record-type (<http-dispatcher> make-http-dispatcher http-dispatcher?)
@@ -138,14 +139,27 @@
        r))))
 
 (define (http-add-dispatcher! dispatcher method path handler)
+  (define (find-regex-slot pattern method patterns)
+    (define (pattern=? a p)
+      (let ((b (car p)))
+	(and (string=? method (cdr p))
+	     (or (string=? (regex-pattern a) (regex-pattern b)) ;; faster
+		 (equal? (regex-ast a) (regex-ast b)))
+	     (= (regex-flags a) (regex-flags b)))))
+    (assoc pattern patterns pattern=?))
+
   (cond ((string? path)
 	 (hashtable-set! (http-dispatcher-table dispatcher)
 			 (http-make-path-entry (symbol->string method) path)
 			 handler))
 	((regex-pattern? path)
-	 (let ((p (http-dispatcher-patterns dispatcher)))
-	   (http-dispatcher-patterns-set! dispatcher 
-	     (cons (cons* path (symbol->string method) handler) p))))
+	 (let ((p (http-dispatcher-patterns dispatcher))
+	       (m (symbol->string method)))
+	   (cond ((find-regex-slot path m p) =>
+		  (lambda (s) (set-cdr! s handler)))
+		 (else
+		  (http-dispatcher-patterns-set! dispatcher 
+		    (acons (cons path m) handler p))))))
 	(else
 	 (assertion-violation 'http-add-dispatcher!
 			      "string or regex pattern required" path))))
@@ -426,7 +440,7 @@
     (define (lookup-handler method opath)
       (define (match? path patterns)
 	(find (lambda (pattern) 
-		(and ((car pattern) path) (string=? method (cadr pattern))))
+		(and ((caar pattern) path) (string=? method (cdar pattern))))
 		patterns))
       (let ((table (http-dispatcher-table dispatcher))
 	    (pattern (http-dispatcher-patterns dispatcher))
