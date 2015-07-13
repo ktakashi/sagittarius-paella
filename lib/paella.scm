@@ -446,7 +446,7 @@
 	    (pattern (http-dispatcher-patterns dispatcher))
 	    (path (http-make-path-entry method opath)))
 	(cond ((hashtable-ref table path #f))
-	      ((match? opath pattern) => cddr)
+	      ((match? opath pattern) => cdr)
 	      ((hashtable-ref table (http-make-path-entry method "*")
 			      (*http-not-found-handler*))))))
 
