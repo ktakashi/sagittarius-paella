@@ -1,0 +1,28 @@
+<html>
+  <head>
+    <title>Memo</title>
+    <script src="/memo/scripts/load.js"></script>
+  </head>
+  <body onload="javascript:load_lists()">
+    <div id="content-wrapper">
+      <div id="viewer" style="width: 70%; position: relative; float: left">
+	<h3>List of memo:</h3>
+	<!-- will be filled-->
+	<div id="memo-list"></div>
+	<div id="memo-view"></div>
+      </div>
+      <div id="control" style="width: 29%; position: relative; float: right;">
+	<h3>New memo</h3>
+	<form id="edit" action="/memo" method="POST" 
+	      enctype="multipart/form-data">
+	  <div>Name: <input id="name" name="name" type="text" /></div>
+	  <div>Tag: <input id="tags" name="tags" type="text" /></div>
+	  <!-- markdown -->
+	  <div>Memo</div>
+	  <textarea id="content" name="content" cols="50" rows="50"></textarea><br />
+	  <input type="button" value="Create" onclick="submit_memo(this.form.name, this.form.tags, this.form.content)"/>
+	</form>
+      </div>
+    </div>
+  </body>
+</html>
