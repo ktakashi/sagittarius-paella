@@ -3,6 +3,17 @@ Reference manual for Plato
 
 Plato is a web application framework based on Paella.
 
+Demo
+----
+
+As an example, there is an example application bundled. To run this,
+
+    $ cd example/plato
+    $ sash run.scm
+
+Then you can access http://localhost:8080/memo
+
+
 Simple web application
 ----------------------
 
@@ -59,11 +70,31 @@ procedure like this:
 (define entry-point (tapas-request-handler $your-http-handler))
 ```
 
+Plato also supports sub context path. If the library exports, `mount-paths`
+procedure which must be a thunk, then during the load, it calls the procedure
+and mount the path under the application path. The procedure must return
+a list which structure is the following:
+
+- `((http-methods ...) path request-handler)`
+
+The `http-method` must be a symbol which indicated proper HTTP method, such as
+`GET` or `POST`.
+
+The `path must be a string or regular expression which will be a sub context
+path.
+
+The `request-handler` must be a Paella HTTP request handler.
+
+Each sub context path also has own directory allocated. So when the request
+handler is invoked, then the sub context can use own directory as its resource
+location. For example, an application `app` has a sub context `sub1` and
+`sub2`, then `sub1`'s request handler is invoked. During the invokaction of
+the request handler, current directory is set to `$root/apps/app/sub1`.
+
 
 TODO
 ----
 
 - session management
-- context path
-
+- document for context
 
