@@ -48,6 +48,8 @@
 	    http-request-parameters
 	    http-request-cookies
 	    http-request-source
+	    http-request-remote-address
+	    http-request-remote-port
 	    ;; parameter
 	    http-parameter?
 	    http-parameter-name
@@ -72,6 +74,7 @@
 	    (rfc uri)
 	    (rfc cookie)
 	    (rfc gzip)
+	    (clos user)
 	    (sagittarius)
 	    (sagittarius regex)
 	    (sagittarius socket)
@@ -175,7 +178,9 @@
 	  ;; cookies
 	  (immutable cookies http-request-cookies)
 	  ;; raw POST?
-	  (immutable source  http-request-source)))
+	  (immutable source  http-request-source)
+	  (immutable remote-addr http-request-remote-address)
+	  (immutable remote-port http-request-remote-port)))
 (define-record-type (<http-parameter> make-http-parameter http-parameter?)
   (fields (immutable name    http-parameter-name)
 	  (immutable value   http-parameter-value)
@@ -377,6 +382,7 @@
   (lambda (server socket)
     (define in (socket-input-port socket))
     (define out (socket-output-port socket))
+    (define peer (socket-peer socket))
     (define (fixup-status status)
       (if (pair? status)
 	  status
@@ -475,7 +481,10 @@
 				     ;; TODO proper http request
 				     (handler (make-http-request
 					       method path opath 
-					       headers params cookies in))))
+					       headers params cookies in
+					       (ip-address->string 
+						(slot-ref peer 'ip-address))
+					       (slot-ref peer 'port)))))
 			 (http-emit-response out headers
 					     (fixup-status status)
 					     mime content

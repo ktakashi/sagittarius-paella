@@ -49,7 +49,8 @@
 	    (paella)
 	    (plato invoke)
 	    (rfc uuid)
-	    (rfc cookie))
+	    (rfc cookie)
+	    (math))
 
 (define-constant +session+ "session")
 
@@ -101,7 +102,8 @@
 				    (make-time time-duration 0 duration)))
 		(cookie (make-cookie session-id
 				     (slot-ref session 'name)
-				     :expires (time-utc->date when)
+				     ;; forcing offset to be 0
+				     :expires (time-utc->date when 0)
 				     :http-only #t
 				     :path (string-append "/" app))))
 	   (apply values status mime content 
@@ -116,8 +118,18 @@
 							  session-id))
 					      cookies)))
 			    (cookie-value c))
-			  (uuid->string (make-v4-uuid)))))
-    (load/create-session app session-name work)))
+			  (generate-session-id req))))
+    (load/create-session req app session-name work)))
+
+(define (generate-session-id req)
+  (let* ((h (hash-algorithm SHA-1))
+	 (bv (make-bytevector (hash-size h))))
+    (hash-init! h)
+    (hash-process! h (string->utf8 (http-request-remote-address req)))
+    (hash-process! h (string->utf8
+		      (number->string (http-request-remote-port req))))
+    (hash-done! h bv)
+    (number->string (bytevector->integer bv) 32)))
 
 (define (make-session session) 
   (apply make <plato-session> (apply append session)))
@@ -140,7 +152,11 @@
 	;; return session for convenience
 	session))))
 
-(define (load/create-session app name dir)
+(define (load/create-session req app name dir)
+  (define (check timer session name)
+    (and (timer-exists? timer (slot-ref session 'timer-id))
+	 (string=? (slot-ref session 'name) (generate-session-id req))))
+
   (let ((file (build-path* dir +session+ name))
 	(timer (retrieve-timer app)))
     (if (file-exists? file)
@@ -149,12 +165,11 @@
 			 `(,@(remp (lambda (i) (eq? :created (car i))) 
 				   raw-session)
 			   (:created ,(time-second (current-time)))))))
-	  (if (timer-exists? timer (slot-ref session 'timer-id))
+	  (if (check timer session name)
 	      (begin
 		(timer-reschedule! timer
 				   (slot-ref session 'timer-id)
-				   (make-expire-task file)
-				   (* (*plato-session-duration*) 1000))
+				   (make-expire-task file))
 		session)
 	      (let ((id (timer-schedule! timer (make-expire-task file)
 				   ;; to milliseconds
