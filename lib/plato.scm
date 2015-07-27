@@ -30,4 +30,5 @@
 
 (library (plato)
     (export :all)
-    (import (plato invoke)))
+    (import (plato invoke)
+	    (plato session)))

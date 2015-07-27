@@ -42,6 +42,7 @@
 	    plato-current-path
 	    plato-work-path
 	    plato-parent-context
+	    plato-application-name
 
 	    ;; for tools
 	    +plato-handler-file+
@@ -73,7 +74,8 @@
 	  (immutable current-path plato-current-path)
 	  ;; temporary path for this context
 	  (immutable work-path    plato-work-path)
-	  (immutable parent       plato-parent-context)))
+	  (immutable parent       plato-parent-context)
+	  (immutable app-name     plato-application-name)))
 
 #|
 Invoking a server takes 2 pass.
@@ -153,7 +155,8 @@ the context of parents.
 		   root
 		   handler-path
 		   work-path
-		   #f))
+		   #f
+		   handler))
   (define (create-plato-handler proc context)
     (lambda (req)
       ;; TODO session
@@ -177,7 +180,8 @@ the context of parents.
 	 (make-plato-context handler-path
 			     (ensure-path path)
 			     work-path ;; TODO should we separate?
-			     context))
+			     context
+			     handler))
 	;; unfortunately, we can't determine now.
 	;; so it'll be runtime
 	(lambda (req)
@@ -192,7 +196,8 @@ the context of parents.
 							 handler-path
 							 this-path
 							 work-path
-							 context)))
+							 context
+							 handler)))
 		  (handler req))))))))
   
   (define (sub-context parent env)
