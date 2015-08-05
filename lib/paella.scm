@@ -47,6 +47,7 @@
 	    http-request-headers
 	    http-request-parameters
 	    http-request-cookies
+	    http-request-socket
 	    http-request-source
 	    http-request-remote-address
 	    http-request-remote-port
@@ -177,6 +178,7 @@
 	  (immutable parameters http-request-parameters)
 	  ;; cookies
 	  (immutable cookies http-request-cookies)
+	  (immutable socket  http-request-socket)
 	  ;; raw POST?
 	  (immutable source  http-request-source)
 	  (immutable remote-addr http-request-remote-address)
@@ -481,7 +483,8 @@
 				     ;; TODO proper http request
 				     (handler (make-http-request
 					       method path opath 
-					       headers params cookies in
+					       headers params cookies 
+					       socket in
 					       (ip-address->string 
 						(slot-ref peer 'ip-address))
 					       (slot-ref peer 'port)))))
