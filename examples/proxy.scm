@@ -1,6 +1,11 @@
 #!read-macro=sagittarius/regex
 #!read-macro=sagittarius/bv-string
 
+#|
+Proxy server. This is not *yet* part of Paella.
+
+The following script requires 0.6.7 because of the bug of socket-select.
+|#
 (add-load-path "../lib")
 (import (rnrs)
 	(net server)
