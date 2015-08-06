@@ -488,10 +488,11 @@
 					       (ip-address->string 
 						(slot-ref peer 'ip-address))
 					       (slot-ref peer 'port)))))
-			 (http-emit-response out headers
-					     (fixup-status status)
-					     mime content
-					     response-headers))))))))
+			 (when (and status (not (eq? mime 'none)))
+			   (http-emit-response out headers
+					       (fixup-status status)
+					       mime content
+					       response-headers)))))))))
 	    (else
 	     (let ((data (get-bytevector-all in)))
 	       (http-internal-server-error out #f
