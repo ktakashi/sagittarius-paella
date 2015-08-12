@@ -266,7 +266,7 @@
 		  (loop (get-bytevector-n! content buf 0 size))))))
   (define gzip?
     (and-let* ((accept-encoding (get-header request-headers "accept-encoding")))
-      (and accept-encoding (#/gzip.+?deflate/ accept-encoding))))
+      (and accept-encoding (#/gzip/ accept-encoding))))
   
   (let-values (((mime size content compressed?)
 		(get-content mime content gzip?)))
