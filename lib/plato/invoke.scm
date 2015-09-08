@@ -163,7 +163,7 @@ the context of parents.
       (parameterize ((current-directory (plato-current-path context))
 		     (*plato-current-context* context))
 	(proc req))))
-  (define (create-plato-sub-handler path handler)
+  (define (create-plato-sub-handler path proc)
     (define (ensure-path path)
       (define (create-if-needed path)
 	(let ((p (build-path* handler-path path)))
@@ -176,12 +176,12 @@ the context of parents.
 
     (if (string? path)
 	(create-plato-handler 
-	 handler
+	 proc
 	 (make-plato-context handler-path
 			     (ensure-path path)
 			     work-path ;; TODO should we separate?
 			     context
-			     path))
+			     handler))
 	;; unfortunately, we can't determine now.
 	;; so it'll be runtime
 	(lambda (req)
@@ -198,7 +198,7 @@ the context of parents.
 							 work-path
 							 context
 							 handler)))
-		  (handler req))))))))
+		  (proc req))))))))
   
   (define (sub-context parent env)
     ;; adding parent context

@@ -31,6 +31,7 @@
 (library (plato session)
     (export plato-session-handler
 	    plato-session-values
+	    plato-session-name
 	    plato-session-set!
 	    plato-session-ref
 	    *plato-session-id*
@@ -61,7 +62,7 @@
 (define *plato-session-duration* (make-parameter (* 60 10)))
 
 (define-class <plato-session> ()
-  ((name :init-keyword :name)
+  ((name :init-keyword :name :reader plato-session-name)
    (app  :init-keyword :app)
    (created :init-keyword :created)
    ;; alist of session data
