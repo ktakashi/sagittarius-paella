@@ -173,7 +173,7 @@ the context of parents.
 	(cond ((#/^\/+(.+)/ p) => 
 	       (lambda (m) (create-if-needed (m 1))))
 	      (else (create-if-needed p)))))
-	       
+
     (if (string? path)
 	(create-plato-handler 
 	 handler
@@ -181,7 +181,7 @@ the context of parents.
 			     (ensure-path path)
 			     work-path ;; TODO should we separate?
 			     context
-			     handler))
+			     path))
 	;; unfortunately, we can't determine now.
 	;; so it'll be runtime
 	(lambda (req)
