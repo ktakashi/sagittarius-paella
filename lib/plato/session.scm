@@ -74,7 +74,7 @@
     (cond ((assoc name data) =>
 	   (lambda (slot) (set-cdr! slot value)))
 	  (else
-	   (slot-set! (slot-ref session 'data) (acons name value data))))))
+	   (slot-set! session 'data (acons name value data))))))
 (define (plato-session-ref session name :optional (fallback #f))
   (let ((data (plato-session-values session)))
     (cond ((assoc name data) => cdr)
