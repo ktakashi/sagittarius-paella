@@ -1,0 +1,32 @@
+<html>
+  <head>
+    <title>Log search</title>
+    <link rel="stylesheet" type="text/css" href="/logsearch/styles/style.css">
+    <script type="text/javascript" src="/logsearch/scripts/ajax.js"></script>
+    <script type="text/javascript" src="/logsearch/scripts/form.js"></script>
+    <script type="text/javascript">
+	  window.onload = function() {
+	    async_load_list("/logsearch/list_file", add_option);
+	  }
+    </script>
+  </head>
+  <body>
+    <div id="condition_container" class="container">
+      <div id="file_container" class="item_container">
+	<h3 class="item_title">Files</h3>
+	<select id="file_list" name="filename" multiple></select>
+      </div>
+      <div id="query_container" class="item_container">
+	<h3 class="item_title">Query</h3>
+	Search text: <input type="text" id="search_query" class="text_input"/>
+	As regexp: <input type="checkbox" id="as_regexp" class="check_input"/>
+	<input type="button" name="search_button" 
+	       class="button" value="Search" 
+	       onclick="javascript:send_query(this)"/>
+      </div>
+    </div>
+    <div id="content_container" class="container">
+      
+    </div>
+  </body>
+</html>
