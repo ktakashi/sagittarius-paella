@@ -32,13 +32,11 @@ function send_query(button) {
     while (c.firstChild) {
 	c.removeChild(c.firstChild);
     }
-    if (!submit_async_query("/logsearch/search",
-			    {"files": files,
-			     "query": q.value,
-			     "regexp": reg.checked },
-			    render)) {
-	alert("Failed to submit");
-    }
+    submit_async_query("/logsearch/search",
+		       {"files": files,
+			"query": q.value,
+			"regexp": reg.checked },
+		       render);
 }
 
 function class_change(e, className) {

@@ -29,13 +29,14 @@ function handle_result(result, proc)
 
 function submit_async_query(endpoint, json_query, proc) {
     var xmlhttp = new XMLHttpRequest();
-    xmlhttp.open("POST", endpoint, false);
+    xmlhttp.open("POST", endpoint, true);
     xmlhttp.setRequestHeader("Content-type",
 			     "application/x-www-form-urlencoded");
     xmlhttp.send("json=" + encode_for_cgi(JSON.stringify(json_query)));
-    if (xmlhttp.status == 200) {
-	var result = JSON.parse(xmlhttp.responseText);
-	return handle_result(result, proc);
+    xmlhttp.onreadystatechange = function() {
+	if (xmlhttp.readyState == 4) {
+	    var result = JSON.parse(xmlhttp.responseText);
+	    return handle_result(result, proc);
+	}
     }
-    return false;
 }
