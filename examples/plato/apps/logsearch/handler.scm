@@ -153,13 +153,15 @@
       (call-with-string-output-port
        (lambda (out)
 	 (json-write json out))))
-    (define (retrieve-results sq)
+    (define (retrieve-results id sq)
       ;; emulates max timeout period
       (define timeout (add-duration (current-time) search-thread-timeout))
-      (let loop ((r '()))
-	(let ((q (shared-queue-get! sq timeout)))
-	  (cond (q (loop (cons q r)))
-		(else r)))))
+      (if (or (not id) (thread-pool-thread-task-running? search-thread-pool id))
+	  (let loop ((r '()))
+	    (let ((q (shared-queue-get! sq timeout)))
+	      (cond (q (loop (cons q r)))
+		    (else r))))
+	  '(#t)))
     (define (response-it results next-query)
       ;; if the results contains #t in the first element then it's ended
       (let* ((done? (and (not (null? results)) (eqv? (car results) #t)))
@@ -186,10 +188,10 @@
 			    (http-parameter-value (cdr json-param))))
 		   (json (parameterize ((*json-map-type* 'alist))
 			   (json-read (open-string-input-port jstring)))))
-	  (cond ((assq 'thread-id json) =>
+	  (cond ((assoc "thread-id" json) =>
 		 (lambda (slot)
 		   (let ((sq (vector-ref search-thread-data (cdr slot))))
-		     (response-it (retrieve-results sq) json))))
+		     (response-it (retrieve-results (cdr slot) sq) json))))
 		(else
 		 ;; terminate if there's already a session
 		 (terminate-previous-process session)
@@ -200,7 +202,7 @@
 		   (thread-specific-set! t (plato-session-name session))
 		   (plato-session-set! session "thread-id" id)
 		   (vector-set! search-thread-data id sq)
-		   (response-it (retrieve-results sq) 
+		   (response-it (retrieve-results #f sq) 
 				(acons 'thread-id id json))))))
 	(values 500 'text/plain "Invalid parameter")))
 	
