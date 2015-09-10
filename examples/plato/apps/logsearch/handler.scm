@@ -67,7 +67,10 @@
 			    (else +default-timeout+))))
 	(set! search-thread-pool (make-thread-pool count))
 	(set! search-thread-data (make-vector count #f))
-	(set! search-thread-timeout timeout))))
+	(set! search-thread-timeout (make-time time-duration 
+					       ;; milli -> nano
+					       (* timeout 1000000)
+					       0)))))
 
   (define (logsearch-handler req)
     ;; load configuration into session
@@ -148,22 +151,13 @@
       (call-with-string-output-port
        (lambda (out)
 	 (json-write json out))))
-    (define (current-time-millis)
-      (let-values (((sec usec) (get-time-of-day)))
-	(+ (* sec 1000) (div usec 1000))))
     (define (retrieve-results sq)
       ;; emulates max timeout period
-      (define process-start (current-time-millis))
-      (let loop ((r '()) (timeout search-thread-timeout))
-	(if (<= timeout 0)
-	    r
-	    (let* ((start (current-time-millis))
-		   (q (shared-queue-get! sq (inexact (/ timeout 1000))))
-		   (end  (current-time-millis)))
-	      (cond (q 
-		     (loop (cons q r) (- timeout (- end start))))
-		    ((> timeout (- end process-start)) r)
-		    (else r))))))
+      (define timeout (add-duration (current-time) search-thread-timeout))
+      (let loop ((r '()))
+	(let ((q (shared-queue-get! sq timeout)))
+	  (cond (q (loop (cons q r)))
+		(else r)))))
     (define (response-it results next-query)
       ;; if the results contains #t in the first element then it's ended
       (let* ((done? (and (not (null? results)) (eqv? (car results) #t)))
@@ -174,7 +168,6 @@
 	  (values 200 'application/json
 		  (json->string `((result . ,(list->vector texts))
 				  (done   . ,done?)
-				  (wait   . ,search-thread-timeout)
 				  (next   . ,uri)
 				  (query  . ,next-query)))))))
 
