@@ -28,6 +28,7 @@
 ;;;   SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ;;;  
 
+#!read-macro=sagittarius/regex
 (library (tapas tags)
     (export <tapas-form>
 	    <tapas-input>
@@ -48,6 +49,8 @@
     (import (rnrs)
 	    (clos user)
 	    (clos core)
+	    (sagittarius)
+	    (sagittarius regex)
 	    (sagittarius object)
 	    (tapas handler)
 	    (tapas base)
@@ -153,6 +156,7 @@
    (charset :init-keyword :charset :init-value #f)
    (async :init-keyword :async :init-value #f)
    (defer :init-keyword :defer :init-value #f)))
+  
 (define-method tapas-render-component ((s <tapas-script>))
   (let ((this (call-next-method)))
     (sxml:change-name! this 'script)
@@ -161,6 +165,20 @@
     (safe-set-attr! this s 'charset)
     (safe-set-attr! this s 'async)
     (safe-set-attr! this s 'defer)
+    ;; wrap content with *COMMENT* to avoid escaping < >
+    ;; this must be after set-attr! to avoid sxml:content
+    ;; NB: sxml:content doesn't return *COMMENT* element 
+    ;;     means if the result content is modified by that,
+    ;;     then it'd get screwed.
+    (and-let* ((content (sxml:content this))
+	       ( (not (null? content)) )
+	       ( (not (eq? (car content) '*COMMENT*)) ))
+      ;; we assume all elements are already strings
+      (let* ((c (string-concatenate content))
+	     (new-c (regex-replace-all #/-->/
+				       (regex-replace-all #/<!--/ c "")
+				       "")))
+	(sxml:change-content! this (list (list '*COMMENT* new-c)))))
     this))
 
 ;;; utility
