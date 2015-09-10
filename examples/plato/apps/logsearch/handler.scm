@@ -56,6 +56,7 @@
   (define search-thread-pool #f)
   (define search-thread-data #f)
   (define search-thread-timeout #f)
+  (define %raw-timeout #f)
 
   (define (init-globals context)    
     (unless search-thread-pool
@@ -67,6 +68,7 @@
 			    (else +default-timeout+))))
 	(set! search-thread-pool (make-thread-pool count))
 	(set! search-thread-data (make-vector count #f))
+	(set! %raw-timeout timeout)
 	(set! search-thread-timeout (make-time time-duration 
 					       ;; milli -> nano
 					       (* timeout 1000000)
@@ -169,6 +171,7 @@
 		  (json->string `((result . ,(list->vector texts))
 				  (done   . ,done?)
 				  (next   . ,uri)
+				  (wait   . ,%raw-timeout)
 				  (query  . ,next-query)))))))
 
     (define (terminate-previous-process session)

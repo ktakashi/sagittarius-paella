@@ -31,8 +31,10 @@
 (library (cuberteria)
     (export cuberteria-resource-loader)
     (import (rnrs)
+	    (paella)
+	    (plato)
 	    (util file)
-	    (plato))
+	    (rfc uri))
 
   (define (cuberteria-resource-loader mime base)
     (lambda (req)
