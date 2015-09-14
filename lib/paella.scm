@@ -501,6 +501,7 @@
     ;; if something is still there, discard it.
     (unless (null? (socket-read-select 0 socket))
       (get-bytevector-all in))
+    (socket-shutdown socket SHUT_RDWR)
     (socket-close socket)))
 
 
