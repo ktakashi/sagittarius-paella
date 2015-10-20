@@ -40,4 +40,4 @@ Documents
 Supporting version
 ------------------
 
-This library requries Sagittarius Scheme 0.6.6 or later.
+This library requries Sagittarius Scheme 0.6.10 (HEAD) or later.

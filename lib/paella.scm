@@ -383,7 +383,7 @@
 (define (http-server-handler dispatcher)
   (lambda (server socket)
     (define in (socket-input-port socket))
-    (define out (socket-output-port socket))
+    (define out (buffered-port (socket-output-port socket) (buffer-mode block)))
     (define peer (socket-peer socket))
     (define (fixup-status status)
       (if (pair? status)
@@ -467,7 +467,8 @@
 		       acc)) '() headers))
 
     (let ((first (binary:get-line in)))
-      (cond ((#/(\w+)\s+([^\s]+)\s+HTTP\/([\d\.]+)/ first) =>
+      (cond ((eof-object? first)) ;; why
+	    ((#/(\w+)\s+([^\s]+)\s+HTTP\/([\d\.]+)/ first) =>
 	     (lambda (m)
 	       (let* ((method (utf8->string (m 1)))
 		      (opath   (utf8->string (m 2)))
@@ -497,6 +498,7 @@
 	     (let ((data (get-bytevector-all in)))
 	       (http-internal-server-error out #f
 		(if (eof-object? data) "no data" (utf8->string data)))))))
+    (flush-output-port out)
     ;; close the socket
     ;; if something is still there, discard it.
     (unless (null? (socket-read-select 0 socket))

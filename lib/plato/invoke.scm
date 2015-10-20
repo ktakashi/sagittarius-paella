@@ -159,7 +159,6 @@ the context of parents.
 		   handler))
   (define (create-plato-handler proc context)
     (lambda (req)
-      ;; TODO session
       (parameterize ((current-directory (plato-current-path context))
 		     (*plato-current-context* context))
 	(proc req))))
