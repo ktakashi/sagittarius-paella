@@ -76,7 +76,9 @@
   o)
 
 (define-class <tapas-page> (<tapas-container>)
-  ((headers :init-keyword :headers :init-value '())
+  ((pi      :init-keyword :pi      :init-value '())
+   (doctype :init-keyword :doctype :init-value '())
+   (headers :init-keyword :headers :init-value '())
    (body-attributes :init-keyword :body-attributes :init-value '())))
 (define-method initialize ((o <tapas-page>) initargs)
   (call-next-method)
@@ -115,10 +117,13 @@
 (define-method tapas-render-component ((comp <tapas-page>))
   (let* ((this (call-next-method))
 	 (content (sxml:content this))
-	 (headers (map tapas-render-component (~ comp 'headers))))
+	 (headers (map tapas-render-component (~ comp 'headers)))
+	 ;; TODO render?
+	 (pi (~ comp 'pi))
+	 (doctype (~ comp 'doctype)))
     (sxml:change-content! this 
      `((head ,@headers) (body (@ ,@(~ comp 'body-attributes)) ,@content)))
-    this))
+    `(*TOP* ,@pi ,@doctype ,this)))
 
 ;; convenient method
 (define (tapas-set-attribute! component name value)
