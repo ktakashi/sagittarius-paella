@@ -31,12 +31,27 @@
 ;; this doesn't have to be a library
 (library (plato tools)
     (export plato-skelton
-	    plato-add-webapp)
+	    plato-add-webapp
+	    plato-reload)
     (import (rnrs)
 	    (sagittarius)
+	    (sagittarius vm) ;; for find-library and so
 	    (util file)
 	    (plato invoke)
 	    (pp))
+
+;; to make interactive development easier
+(define (plato-reload handler root dispatcher)
+  (define (clear-bindings! library)
+    ;; dont use this casually
+    (let ((table (library-table library)))
+      (hashtable-clear! table))
+    ;; must be '() otherwise would die
+    (library-imported-set! library '())
+    (library-exported-set! library #f))
+  (let ((lib (make-plato-webapp-name handler)))
+    (clear-bindings! (find-library lib #f))
+    (plato-load handler root dispatcher)))
 
 (define (plato-skelton root)
   (create-directory* root)
@@ -50,6 +65,7 @@
 	  (pp '(import (rnrs)
 		       (paella)
 		       (plato)
+		       (plato tools)
 		       (getopt)
 		       (clos user)
 		       (util concurrent)
@@ -77,7 +93,7 @@
 		     (and (member command +stop-commands+)
 			  (shared-queue-put! shared-queue command)))))
 	      out)
-	  (newline out) (newline out)
+	  (newline out)
 
 	  (display ";; create server config" out) (newline out)
 	  (pp '(define (make-server-config shutdown-port max-thread)
@@ -91,7 +107,7 @@
 		     :shutdown-handler handler)
 		    shared-queue)))
 	      out)
-	  (newline out) (newline out)
+	  (newline out)
 
 	  (display ";; run the server" out) (newline out)
 	  (pp '(define (run-server port config remote-port shared-queue)
@@ -118,7 +134,7 @@
 		       (wait! socket))
 		     (wait! #f)))
 	      out)
-	  (newline out) (newline out)
+	  (newline out)
 
 	  (pp '(define (send-command config command)
 		 (let ((socket (make-client-socket 
@@ -126,7 +142,13 @@
 				(slot-ref config 'shutdown-port))))
 		   (socket-send socket (string->utf8 command))))
 	      out)
-	  (newline out) (newline out)
+	  (newline out)
+
+	  (display ";; For interactive development" out) (newline out)
+	  (pp `(define (reload-webapp name)
+		 (plato-reload name (absolute-path root) http-dispatcher))
+	      out)
+	  (newline out)
 
 	  (pp '(define (usage script)
 		 (format #t "~a [OPTIONS]~%" script)

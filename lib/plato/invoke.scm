@@ -47,7 +47,8 @@
 	    ;; for tools
 	    +plato-handler-file+
 	    +plato-lib-dir+
-	    +plato-app-dir+)
+	    +plato-app-dir+
+	    make-plato-webapp-name)
     (import (rnrs)
 	    (rnrs eval)
 	    (paella)
@@ -144,6 +145,9 @@ the context of parents.
 		(find-files dir 
 			    :pattern #/^handler.scm$/))))
 
+(define (make-plato-webapp-name handler)
+  (list 'plato 'webapp (string->symbol handler)))
+
 (define (plato-load handler root dispatcher)
   (define current-load-path (load-path))
   (define handler-path (build-path* root +plato-app-dir+ handler))
@@ -231,7 +235,7 @@ the context of parents.
     ;; TODO should we wrap with guard to make this run anyway?
     (let ((file (build-path handler-path +plato-handler-file+))
 	  ;; (plato webapp $handler) is the library name
-	  (lib (list 'plato 'webapp (string->symbol handler))))
+	  (lib (make-plato-webapp-name handler)))
       (call-with-input-file file
 	(lambda (in)
 	  (let loop ((e (read/ss in)))
