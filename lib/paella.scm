@@ -382,7 +382,7 @@
 
 (define (http-server-handler dispatcher)
   (lambda (server socket)
-    (define in (socket-input-port socket))
+    (define in (buffered-port (socket-input-port socket) (buffer-mode line)))
     (define out (buffered-port (socket-output-port socket) (buffer-mode block)))
     (define peer (socket-peer socket))
     (define (fixup-status status)

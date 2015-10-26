@@ -146,7 +146,7 @@
 
 	  (display ";; For interactive development" out) (newline out)
 	  (pp `(define (reload-webapp name)
-		 (plato-reload name (absolute-path root) http-dispatcher))
+		 (plato-reload name ,(absolute-path root) http-dispatcher))
 	      out)
 	  (newline out)
 
