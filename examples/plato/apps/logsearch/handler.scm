@@ -41,9 +41,13 @@
 	    (util bytevector)
 	    (rename (binary io) (get-line binary:get-line))
 	    (text json)
+	    (srfi :1 lists)
 	    (srfi :18 multithreading)
 	    (srfi :39 parameters)
+	    (clos user)
+	    (clos core)
 	    (sagittarius)
+	    (sagittarius io)
 	    (sagittarius time)
 	    (sagittarius control)
 	    (sagittarius regex))
@@ -51,6 +55,26 @@
   (define-constant +config+ "config.scm")
   (define-constant +default-search-threads+ 10)
   (define-constant +default-timeout+       3000) ;; 3000ms = 3s
+
+  (define (bytevector->json bv)
+    (parameterize ((*json-map-type* 'alist))
+      (json-read (open-string-input-port (utf8->string bv)))))
+  (define-class <json-request> (<converter-mixin>) 
+    ((json :converter bytevector->json)))
+
+  (define (json->response json)
+    (cuberteria-map-object! (make <json-response>) json
+			    (lambda (p) (string->symbol (car p)))
+			    cdr))
+  (define-class <json-response> (<converter-mixin>)
+    (thread-id
+     files
+     regexp
+     query
+     done?
+     next
+     wait
+     (next-query :converter json->response :json #t)))
 
   ;; FIXME: using global thread pool isn't a good idea
   (define search-thread-pool #f)
@@ -123,22 +147,34 @@
 	      ;; I don't know the format so ignore.
 	      (else (loop (binary:get-line in))))))
     (define (search files pred)
+      ;; reuse buffer
+      (define buffer (make-bytevector 8096))
       (dolist (file files)
-	(let ((in (open-file-input-port file (file-options no-fail)
-					(buffer-mode buffer))))
+	(let ((in #;(open-file-input-port file (file-options no-fail)
+					(buffer-mode block))
+		  (buffered-port
+		   (open-file-input-port file (file-options no-fail)
+					 (buffer-mode none))
+		   (buffer-mode block)
+		   :buffer buffer)))
 	  (let loop ()
 	    (let ((block (read-block in)))
 	      (unless (eof-object? block)
-		(when (pred block) (shared-queue-put! sq (utf8->string block)))
+		(when (pred block) 
+		  (let ((line (if (null? (cdr files))
+				  (utf8->string block)
+				  (string-append file ":"
+						 (utf8->string block)))))
+		    (shared-queue-put! sq line)))
 		(loop))))
 	  (close-input-port in)))
       (shared-queue-put! sq #t))
 
     (lambda ()
-      (let ((files (vector->list (cdr (assoc "files" json))))
+      (let ((files (vector->list (slot-ref json 'files)))
 	    ;; TODO handle other encoding
-	    (text  (cdr (assoc "query" json))))
-	(if (cdr (assoc "regexp" json))
+	    (text  (slot-ref json 'query)))
+	(if (slot-ref json 'regexp)
 	    (let ((p (regex text)))
 	      (search files (lambda (block) (p block))))
 	    (let ((text (string->utf8 text)))
@@ -147,7 +183,6 @@
 
   (define (search-handler req)
     (define uri (http-request-uri req))
-    (define params (http-request-parameters req))
     (define session (*plato-current-session*))
     (define (json->string json)
       (call-with-string-output-port
@@ -170,11 +205,11 @@
 			results)))
 	(parameterize ((*json-map-type* 'alist))
 	  (values 200 'application/json
-		  (json->string `((result . ,(list->vector texts))
-				  (done   . ,done?)
-				  (next   . ,uri)
-				  (wait   . ,%raw-timeout)
-				  (query  . ,next-query)))))))
+	    (json->string `((result . ,(list->vector texts))
+			    (done   . ,done?)
+			    (next   . ,uri)
+			    (wait   . ,%raw-timeout)
+			    (next-query  . ,(cuberteria-object->json next-query))))))))
 
     (define (terminate-previous-process session)
       (and-let* ((id (plato-session-ref session "thread-id"))
@@ -183,15 +218,14 @@
 	  (thread-pool-thread-terminate! search-thread-pool id))))
 
     (init-globals (plato-parent-context (*plato-current-context*)))
-    (or (and-let* ((json-param (assoc "json" params))
-		   (jstring (utf8->string 
-			    (http-parameter-value (cdr json-param))))
-		   (json (parameterize ((*json-map-type* 'alist))
-			   (json-read (open-string-input-port jstring)))))
-	  (cond ((assoc "thread-id" json) =>
-		 (lambda (slot)
-		   (let ((sq (vector-ref search-thread-data (cdr slot))))
-		     (response-it (retrieve-results (cdr slot) sq) json))))
+    (or (and-let* ((json-request 
+		    (cuberteria-map-http-request! (make <json-request>) req))
+		   ( (slot-bound? json-request 'json) ) ;; in case
+		   (json (json->response (slot-ref json-request 'json))))
+	  (cond ((slot-bound? json 'thread-id) =>
+		 (let* ((id (slot-ref json 'thread-id))
+			(sq (vector-ref search-thread-data id)))
+		   (response-it (retrieve-results id sq) json)))
 		(else
 		 ;; terminate if there's already a session
 		 (terminate-previous-process session)
@@ -202,8 +236,8 @@
 		   (thread-specific-set! t (plato-session-name session))
 		   (plato-session-set! session "thread-id" id)
 		   (vector-set! search-thread-data id sq)
-		   (response-it (retrieve-results #f sq) 
-				(acons 'thread-id id json))))))
+		   (slot-set! json 'thread-id id)
+		   (response-it (retrieve-results #f sq) json)))))
 	(values 500 'text/plain "Invalid parameter")))
 	
 

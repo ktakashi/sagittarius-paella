@@ -29,12 +29,24 @@
 ;;;  
 
 (library (cuberteria)
-    (export cuberteria-resource-loader)
+    (export cuberteria-resource-loader
+	    cuberteria-map-http-request!
+	    cuberteria-map-json-object!
+	    cuberteria-map-object!
+	    cuberteria-object->json
+	    ;; for convenience
+	    <converter-meta> <converter-mixin>
+	    )
     (import (rnrs)
 	    (paella)
 	    (plato)
 	    (util file)
-	    (rfc uri))
+	    (rfc uri)
+	    (clos core)
+	    (clos user)
+	    (text json)
+	    (srfi :1 lists)
+	    (srfi :39 parameters))
 
   (define (cuberteria-resource-loader mime base)
     (lambda (req)
@@ -48,4 +60,70 @@
 		     (file-options no-fail)
 		     (buffer-mode block))))
 	    (values 200 mime in))))))
+
+  ;; <validator-mixin> can also be used but this is more convenient if
+  ;; only conversion is needed.
+  (define-class <converter-meta> (<class>) ())
+  (define-method compute-getter-and-setter ((class <converter-meta>) slot)
+    (let ((r    (call-next-method))
+	  (conv  (slot-definition-option slot :converter #f))
+	  (name (slot-definition-name slot)))
+      (if conv
+	  (let ((setter (or (cadr r)
+			    (lambda (o v)
+			      (slot-set-using-class! class o name v)))))
+	    (list (car r)
+		  (lambda (o v)
+			(setter o (conv v)))
+		  (caddr r)))
+	  r)))
+  (define-class <converter-mixin> () () :metaclass <converter-meta>)
+
+  ;; this may be convenient with combination of <validator-mixin>
+  (define (cuberteria-map-http-request! obj request)
+    (define params (http-request-parameters request))
+    (cuberteria-map-object! obj params 
+			    (lambda (p) (string->symbol (car p)))
+			    (lambda (p) (http-parameter-value (cdr p)))))
+  
+  ;; if you are using JSON then this may be convenient
+  (define (cuberteria-map-json-object! obj json-string)
+    (define (string->json json-string)
+      (parameterize ((*json-map-type* 'alist))
+	(json-read (open-string-input-port json-string))))
+    (let ((json (string->json json-string)))
+      (cuberteria-map-object! obj json
+			      (lambda (p) (string->symbol (car p)))
+			      cdr)))
+
+  ;; general mapper
+  (define (cuberteria-map-object! obj source slot-retriever value-retriever)
+    (for-each (lambda (param)
+		(let ((maybe-slot (slot-retriever param)))
+		  (when (slot-exists? obj maybe-slot)
+		    (slot-set! obj maybe-slot (value-retriever param)))))
+	      source)
+    obj)
+
+  (define (cuberteria-object->json obj :optional (map-type (*json-map-type*)))
+    (define (convert-rec obj handle-array)
+      (filter-map (lambda (slot)
+		    (let ((name (slot-definition-name slot))
+			  ;; if slot definition :json then the value
+			  ;; is recursively converted
+			  (json? (slot-definition-option slot :json #f)))
+		      (and (slot-bound? obj name)
+			   (cons name 
+				 (handle-array
+				  (if json?
+				      (cuberteria-object->json
+				       (slot-ref obj name) map-type)
+				      (slot-ref obj name)))))))
+		  (class-slots (class-of obj))))
+    (case map-type
+      ((alist) (convert-rec obj values))
+      ((vector)
+       (list->vector (convert-rec obj vector->list)))))
+	
+
 )
