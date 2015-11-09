@@ -32,6 +32,7 @@
 (library (plato invoke)
     (export invoke-plato
 	    plato-make-dispatcher
+	    plato-add-root
 	    plato-run
 	    plato-collect-handler
 	    plato-load
@@ -118,13 +119,15 @@ the context of parents.
 
 |#
 (define (plato-make-dispatcher server-root)
-  (let* ((handlers (plato-collect-handler server-root))
-	 ;; create empty dispatcher
-	 (dispatcher (make-http-server-dispatcher)))
+  (plato-add-root (make-http-server-dispatcher) server-root))
+
+(define (plato-add-root dispatcher server-root)
+  (let ((handlers (plato-collect-handler server-root)))
     (dolist (handler handlers)
       ;; evaluate the file
       (plato-load handler server-root dispatcher))
     dispatcher))
+
 (define (plato-run port config dispatcher . opts)
   (let ((server (make-simple-server port (http-server-handler dispatcher)
 				    :config config)))
