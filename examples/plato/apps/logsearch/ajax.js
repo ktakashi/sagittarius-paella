@@ -21,7 +21,7 @@ function handle_result(result, proc)
     proc(result.result);
     if (!result.done) {
 	setTimeout(function() {
-	    submit_async_query(result.next, result.query, proc)
+	    submit_async_query(result.next, result["next-query"], proc)
 	}, result.wait);
     }
     return true;

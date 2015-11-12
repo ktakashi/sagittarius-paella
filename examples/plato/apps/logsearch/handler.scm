@@ -222,7 +222,7 @@
 		    (cuberteria-map-http-request! (make <json-request>) req))
 		   ( (slot-bound? json-request 'json) ) ;; in case
 		   (json (json->response (slot-ref json-request 'json))))
-	  (cond ((slot-bound? json 'thread-id) =>
+	  (cond ((slot-bound? json 'thread-id)
 		 (let* ((id (slot-ref json 'thread-id))
 			(sq (vector-ref search-thread-data id)))
 		   (response-it (retrieve-results id sq) json)))
