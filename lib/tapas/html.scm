@@ -161,6 +161,7 @@
     (hashtable-set! ht 'select <tapas-select>)
     (hashtable-set! ht 'option <tapas-option>)
     (hashtable-set! ht 'script <tapas-script>)
+    (hashtable-set! ht 'style <tapas-style>)
     (hashtable-set! ht 'html page-converter)
     ht))
 

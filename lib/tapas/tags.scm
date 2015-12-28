@@ -40,6 +40,7 @@
 	    <tapas-br>
 
 	    <tapas-script>
+	    <tapas-style>
 	    ;; utilities
 	    tapas:br
 	    make-tapas-simple-tag
@@ -150,21 +151,10 @@
   (set! (~ o 'tag-name) 'br)
   o)
 
-(define-class <tapas-script> (<tapas-component>)
-  ((type :init-keyword :type :init-value #f)
-   (src :init-keyword :src :init-value #f)
-   (charset :init-keyword :charset :init-value #f)
-   (async :init-keyword :async :init-value #f)
-   (defer :init-keyword :defer :init-value #f)))
-  
-(define-method tapas-render-component ((s <tapas-script>))
+;; for convenience
+(define-class <tapas-commentable-body> (<tapas-component>) ())
+(define-method tapas-render-component :around ((s <tapas-commentable-body>))
   (let ((this (call-next-method)))
-    (sxml:change-name! this 'script)
-    (safe-set-attr! this s 'type)
-    (safe-set-attr! this s 'src)
-    (safe-set-attr! this s 'charset)
-    (safe-set-attr! this s 'async)
-    (safe-set-attr! this s 'defer)
     ;; wrap content with *COMMENT* to avoid escaping < >
     ;; this must be after set-attr! to avoid sxml:content
     ;; NB: sxml:content doesn't return *COMMENT* element 
@@ -179,6 +169,36 @@
 				       (regex-replace-all #/<!--/ c "")
 				       "")))
 	(sxml:change-content! this (list (list '*COMMENT* new-c)))))
+    this))
+
+(define-class <tapas-script> (<tapas-commentable-body>)
+  ((type :init-keyword :type :init-value #f)
+   (src :init-keyword :src :init-value #f)
+   (charset :init-keyword :charset :init-value #f)
+   (async :init-keyword :async :init-value #f)
+   (defer :init-keyword :defer :init-value #f)))
+  
+(define-method tapas-render-component ((s <tapas-script>))
+  (let ((this (call-next-method)))
+    (sxml:change-name! this 'script)
+    (safe-set-attr! this s 'type)
+    (safe-set-attr! this s 'src)
+    (safe-set-attr! this s 'charset)
+    (safe-set-attr! this s 'async)
+    (safe-set-attr! this s 'defer)
+    this))
+
+;; style
+(define-class <tapas-style> (<tapas-commentable-body>)
+  ((type :init-keyword :type :init-value #f)
+   (media :init-keyword :media :init-value #f)
+   (scoped :init-keyword :scoped :init-value #f)))
+(define-method tapas-render-component ((s <tapas-style>))
+  (let ((this (call-next-method)))
+    (sxml:change-name! this 'style)
+    (safe-set-attr! this s 'type)
+    (safe-set-attr! this s 'media)
+    (safe-set-attr! this s 'scoped)
     this))
 
 ;;; utility
