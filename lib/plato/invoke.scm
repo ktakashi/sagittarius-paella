@@ -44,6 +44,8 @@
 	    plato-work-path
 	    plato-parent-context
 	    plato-application-name
+	    plato-context-lock
+	    with-plato-context-lock
 
 	    ;; for tools
 	    +plato-handler-file+
@@ -62,12 +64,13 @@
 	    (util file)
 	    (rfc uri)
 	    (srfi :1 lists)
+	    (srfi :18 multithreading)
 	    (srfi :39 parameters))
 
 (define-constant +plato-handler-file+ "handler.scm")
 (define-constant +plato-lib-dir+      "lib")
 (define-constant +plato-app-dir+      "apps")
-(define-constant +plato-work-dir+      "work")
+(define-constant +plato-work-dir+     "work")
 
 (define *plato-current-context* (make-parameter #f))
 
@@ -77,7 +80,21 @@
 	  ;; temporary path for this context
 	  (immutable work-path    plato-work-path)
 	  (immutable parent       plato-parent-context)
-	  (immutable app-name     plato-application-name)))
+	  (immutable app-name     plato-application-name)
+	  ;; if user/framework needs lock per context
+	  (immutable lock         plato-context-lock))
+  (protocol (lambda (n)
+	      (lambda (root path work parent name)
+		(n root path work parent name (make-mutex))))))
+
+(define-syntax with-plato-context-lock
+  (syntax-rules ()
+    ((_ context expr ...)
+     (let ((lock (plato-context-lock context)))
+       (dynamic-wind
+	   (lambda () (mutex-lock! lock))
+	   (lambda () expr ...)
+	   (lambda () (mutex-unlock! lock)))))))
 
 #|
 Invoking a server takes 2 pass.
@@ -157,7 +174,9 @@ the context of parents.
   (define work-path (build-path* root +plato-work-dir+ handler))
   ;; allow r7rs style as well
   (define env (environment '(only (sagittarius) library define-library)))
-  (define context (make-plato-context 
+  ;; context will be unique in handler so we don't have to 
+  ;; make extra storage for this to make sure the uniqueness.
+  (define context (make-plato-context
 		   ;; should we make this absolute path, explicitly?
 		   root
 		   handler-path

@@ -43,6 +43,7 @@
 	    (sagittarius control)
 	    (clos user)
 	    (clos core)
+	    (srfi :18)
 	    (srfi :19 time)
 	    (srfi :39 parameters)
 	    (util timer)
@@ -68,7 +69,8 @@
    ;; alist of session data
    (data :init-keyword :data :init-value '()
 	 :reader plato-session-values)
-   (timer-id :init-keyword :timer-id)))
+   (timer-id :init-keyword :timer-id)
+   ))
 
 (define (plato-session-set! session name value)
   (let ((data (plato-session-values session)))
@@ -93,7 +95,7 @@
 		       (plato-work-path root))))
     ;; session
     (define session-id (*plato-session-id*))
-    (define session (retrieve-session req session-id app work))
+    (define session (retrieve-session plato-context req session-id app work))
     ;; don't let handler change
     (define duration (*plato-session-duration*))
     (parameterize ((*plato-current-session* session))
@@ -109,10 +111,11 @@
 				     :path (string-append "/" app))))
 	   (apply values status mime content 
 		  (cons (list "set-cookie" (cookie->string cookie)) rest))))
-       (save-session work (*plato-current-session*))))))
+       (with-plato-context-lock plato-context
+	 (save-session work (*plato-current-session*)))))))
 
 ;;; private stuff
-(define (retrieve-session req session-id app work)
+(define (retrieve-session ctx req session-id app work)
   (define cookies (http-request-cookies req))
   (let ((session-name (or (and-let* ((c (find (lambda (c) 
 						(string=? (cookie-name c)
@@ -120,7 +123,8 @@
 					      cookies)))
 			    (cookie-value c))
 			  (generate-session-id req))))
-    (load/create-session req app session-name work)))
+    (with-plato-context-lock ctx
+      (load/create-session ctx req app session-name work))))
 
 (define (generate-session-id req)
   (let* ((h (hash-algorithm SHA-1))
@@ -153,7 +157,7 @@
 	;; return session for convenience
 	session))))
 
-(define (load/create-session req app name dir)
+(define (load/create-session ctx req app name dir)
   (define (check timer session name)
     (and (timer-exists? timer (slot-ref session 'timer-id))
 	 (string=? (slot-ref session 'name) (generate-session-id req))))
@@ -170,15 +174,15 @@
 	      (begin
 		(timer-reschedule! timer
 				   (slot-ref session 'timer-id)
-				   (make-expire-task file))
+				   (make-expire-task ctx file))
 		session)
-	      (let ((id (timer-schedule! timer (make-expire-task file)
+	      (let ((id (timer-schedule! timer (make-expire-task ctx file)
 				   ;; to milliseconds
 				   (* (*plato-session-duration*) 1000))))
 		(slot-set! session 'timer-id id)
 		;; update id
 		(save-session dir session))))
-	(let ((id (timer-schedule! timer (make-expire-task file)
+	(let ((id (timer-schedule! timer (make-expire-task ctx file)
 				   ;; to milliseconds
 				   (* (*plato-session-duration*) 1000))))
 	  (save-session dir
@@ -198,7 +202,11 @@
 	       timer))))))
 
 ;; removing session file
-(define (make-expire-task file)
-  (lambda () (when (file-exists? file) (delete-file file))))
+(define (make-expire-task ctx file)
+  (lambda () 
+    (when (file-exists? file) 
+      (with-plato-context-lock ctx
+	(when (file-exists? file) 
+	  (delete-file file))))))
     
 )
