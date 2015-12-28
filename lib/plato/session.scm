@@ -159,8 +159,7 @@
 
 (define (load/create-session ctx req app name dir)
   (define (check timer session name)
-    (and (timer-exists? timer (slot-ref session 'timer-id))
-	 (string=? (slot-ref session 'name) (generate-session-id req))))
+    (timer-exists? timer (slot-ref session 'timer-id)))
 
   (let ((file (build-path* dir +session+ name))
 	(timer (retrieve-timer app)))
@@ -170,18 +169,19 @@
 			 `(,@(remp (lambda (i) (eq? :created (car i))) 
 				   raw-session)
 			   (:created ,(time-second (current-time)))))))
+	  ;; I don't think we need to save session here
+	  ;; since we do after the process.
 	  (if (check timer session name)
 	      (begin
 		(timer-reschedule! timer
 				   (slot-ref session 'timer-id)
-				   (make-expire-task ctx file))
+				   (* (*plato-session-duration*) 1000))
 		session)
 	      (let ((id (timer-schedule! timer (make-expire-task ctx file)
 				   ;; to milliseconds
 				   (* (*plato-session-duration*) 1000))))
 		(slot-set! session 'timer-id id)
-		;; update id
-		(save-session dir session))))
+		session)))
 	(let ((id (timer-schedule! timer (make-expire-task ctx file)
 				   ;; to milliseconds
 				   (* (*plato-session-duration*) 1000))))
