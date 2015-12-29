@@ -98,6 +98,9 @@
     (define session (retrieve-session plato-context req session-id app work))
     ;; don't let handler change
     (define duration (*plato-session-duration*))
+    
+    ;; save session data
+    (define session-data (slot-ref session 'data))
     (parameterize ((*plato-current-session* session))
       (unwind-protect 
        (let-values (((status mime content . rest) (proc req)))
@@ -111,8 +114,11 @@
 				     :path (string-append "/" app))))
 	   (apply values status mime content 
 		  (cons (list "set-cookie" (cookie->string cookie)) rest))))
-       (with-plato-context-lock plato-context
-	 (save-session work (*plato-current-session*)))))))
+       (unless (equal? session-data (slot-ref session 'data))
+	 (with-plato-context-lock plato-context
+	   ;; make sure we save *this* session in case
+	   ;; user overwrite *plato-current-session*
+	   (save-session work session)))))))
 
 ;;; private stuff
 (define (retrieve-session ctx req session-id app work)
@@ -123,8 +129,7 @@
 					      cookies)))
 			    (cookie-value c))
 			  (generate-session-id req))))
-    (with-plato-context-lock ctx
-      (load/create-session ctx req app session-name work))))
+    (load/create-session ctx req app session-name work)))
 
 (define (generate-session-id req)
   (let* ((h (hash-algorithm SHA-1))
@@ -160,15 +165,14 @@
 (define (load/create-session ctx req app name dir)
   (define (check timer session name)
     (timer-exists? timer (slot-ref session 'timer-id)))
+  (define (read-session file)
+    (with-plato-context-lock ctx (call-with-input-file file read)))
 
   (let ((file (build-path* dir +session+ name))
 	(timer (retrieve-timer app)))
     (if (file-exists? file)
-	(let* ((raw-session (call-with-input-file file read))
-	       (session (make-session 
-			 `(,@(remp (lambda (i) (eq? :created (car i))) 
-				   raw-session)
-			   (:created ,(time-second (current-time)))))))
+	(let* ((raw-session (read-session file))
+	       (session (make-session raw-session)))
 	  ;; I don't think we need to save session here
 	  ;; since we do after the process.
 	  (if (check timer session name)
@@ -185,11 +189,12 @@
 	(let ((id (timer-schedule! timer (make-expire-task ctx file)
 				   ;; to milliseconds
 				   (* (*plato-session-duration*) 1000))))
-	  (save-session dir
-	   (make-session `((:name ,name)
-			   (:app  ,app)
-			   (:created ,(time-second (current-time)))
-			   (:timer-id ,id))))))))
+	  (with-plato-context-lock ctx
+	    (save-session dir
+	      (make-session `((:name ,name)
+			      (:app  ,app)
+			      (:created ,(time-second (current-time)))
+			      (:timer-id ,id)))))))))
 
 ;; expiring task
 (define retrieve-timer 
