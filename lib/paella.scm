@@ -510,8 +510,9 @@
 (define (http-file-handler file mime)
   (lambda (req)
     (let ((size (file-size-in-bytes file)))
-      (values 200 mime (open-file-input-port file (file-options no-fail))
-	      (list "content-length" size)))))
+      (values 200 'file file
+	      (list "content-length" size)
+	      (list "content-type" mime)))))
 
 ;; for convenience
 (define (http-registered-path-handler req path-map)
