@@ -31,6 +31,7 @@
 (library (cuberteria)
     (export cuberteria-resource-loader
 	    cuberteria-map-http-request!
+	    cuberteria-map-json-string!
 	    cuberteria-map-json-object!
 	    cuberteria-map-object!
 	    cuberteria-object->json
@@ -84,41 +85,76 @@
     (define params (http-request-parameters request))
     (cuberteria-map-object! obj params 
 			    (lambda (p) (string->symbol (car p)))
-			    (lambda (p) (http-parameter-value (cdr p)))))
+			    (lambda (s p) (http-parameter-value (cdr p)))))
   
   ;; if you are using JSON then this may be convenient
-  (define (cuberteria-map-json-object! obj json-string)
+  (define (cuberteria-map-json-string! obj json-string)
     (define (string->json json-string)
       (parameterize ((*json-map-type* 'alist))
 	(json-read (open-string-input-port json-string))))
     (let ((json (string->json json-string)))
-      (cuberteria-map-object! obj json
-			      (lambda (p) (string->symbol (car p)))
-			      cdr)))
+      (cuberteria-map-json-object! obj json)))
+
+  ;; TODO handling *json-map-type*
+  (define (cuberteria-map-json-object! obj json)
+    (define slot-definitions (class-slots (class-of obj)))
+    (define (find-slot-definition slot)
+      (let loop ((def slot-definitions))
+	(cond ((null? def) #f)
+	      ((eq? slot (slot-definition-name (car def))) (car def))
+	      (else (loop (cdr def))))))
+
+    (define (->json-slot param)
+      (let ((slot (car param)))
+	(let loop ((defs slot-definitions))
+	  (cond ((null? defs) (string->symbol slot))
+		((string=? slot
+			   (slot-definition-option (car defs) 
+						   :json-element-name ""))
+		 (slot-definition-name (car defs)))
+		(else (loop (cdr defs)))))))
+
+    (define (->json-value slot param)
+      (let ((v (cdr param))
+	    (s (find-slot-definition slot)))
+	(cond ((slot-definition-option s :json #f) =>
+	       (lambda (class)
+		 ;; :json must have <class> as its value
+		 (if (is-a? class <class>)
+		     (let ((obj (make class)))
+		       (cuberteria-map-json-object! obj v))
+		     v)))
+	      (else v))))
+    (cuberteria-map-object! obj json ->json-slot ->json-value))
 
   ;; general mapper
   (define (cuberteria-map-object! obj source slot-retriever value-retriever)
     (for-each (lambda (param)
 		(let ((maybe-slot (slot-retriever param)))
 		  (when (slot-exists? obj maybe-slot)
-		    (slot-set! obj maybe-slot (value-retriever param)))))
+		    (slot-set! obj maybe-slot 
+			       (value-retriever maybe-slot param)))))
 	      source)
     obj)
 
   (define (cuberteria-object->json obj :optional (map-type (*json-map-type*)))
+    (define (find-name slot)
+      (cond ((slot-definition-option slot :json-element-name #f))
+	    (else (symbol->string (slot-definition-name slot)))))
     (define (convert-rec obj handle-array)
       (filter-map (lambda (slot)
-		    (let ((name (slot-definition-name slot))
+		    (let ((slot-name (slot-definition-name slot))
+			  (json-name (find-name slot))
 			  ;; if slot definition :json then the value
 			  ;; is recursively converted
 			  (json? (slot-definition-option slot :json #f)))
-		      (and (slot-bound? obj name)
-			   (cons name 
+		      (and (slot-bound? obj slot-name)
+			   (cons json-name 
 				 (handle-array
 				  (if json?
 				      (cuberteria-object->json
-				       (slot-ref obj name) map-type)
-				      (slot-ref obj name)))))))
+				       (slot-ref obj slot-name) map-type)
+				      (slot-ref obj slot-name)))))))
 		  (class-slots (class-of obj))))
     (case map-type
       ((alist) (convert-rec obj values))
