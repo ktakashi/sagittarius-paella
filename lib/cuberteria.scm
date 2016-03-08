@@ -141,10 +141,14 @@
     (define (find-name slot)
       (cond ((slot-definition-option slot :json-element-name #f))
 	    (else (symbol->string (slot-definition-name slot)))))
+    (define (find-converter slot)
+      (cond ((slot-definition-option slot :->json #f))
+	    (else values)))
     (define (convert-rec obj handle-array)
       (filter-map (lambda (slot)
 		    (let ((slot-name (slot-definition-name slot))
 			  (json-name (find-name slot))
+			  (conv (find-converter slot))
 			  ;; if slot definition :json then the value
 			  ;; is recursively converted
 			  (json? (slot-definition-option slot :json #f)))
@@ -154,7 +158,7 @@
 				  (if json?
 				      (cuberteria-object->json
 				       (slot-ref obj slot-name) map-type)
-				      (slot-ref obj slot-name)))))))
+				      (conv (slot-ref obj slot-name))))))))
 		  (class-slots (class-of obj))))
     (case map-type
       ((alist) (convert-rec obj values))
