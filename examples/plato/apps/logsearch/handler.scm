@@ -65,7 +65,7 @@
   (define (json->response json)
     (cuberteria-map-object! (make <json-response>) json
 			    (lambda (p) (string->symbol (car p)))
-			    cdr))
+			    (lambda (s p) (cdr p))))
   (define-class <json-response> (<converter-mixin>)
     (thread-id
      files
