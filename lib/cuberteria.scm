@@ -52,15 +52,12 @@
   (define (cuberteria-resource-loader mime base)
     (lambda (req)
       (define context (plato-parent-context (*plato-current-context*)))
-      (let ((uri (http-request-uri req)))
+      (let ((uri (http-request-path req)))
 	(let-values (((dir file ext) (decompose-path uri)))
-	  (let ((in (open-file-input-port 
-		     (build-path* (plato-current-path context)
-				  base
-				  (string-append file "." ext))
-		     (file-options no-fail)
-		     (buffer-mode block))))
-	    (values 200 mime in))))))
+	  (values 200 'file (build-path* (plato-current-path context)
+					 base
+					 (string-append file "." ext))
+		  (list "Content-Type" mime))))))
 
   ;; <validator-mixin> can also be used but this is more convenient if
   ;; only conversion is needed.
