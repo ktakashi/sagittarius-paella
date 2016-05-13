@@ -74,16 +74,22 @@
 		       (sagittarius process)
 		       (sagittarius socket)
 		       (sagittarius threads)
-		       (sagittarius remote-repl)) out)
+		       (sagittarius remote-repl)
+		       (srfi :39 parameters)) out)
 	  (newline out) (newline out)
-	  
+
+	  (write '(define *plato-roots* (make-parameter '())) out)
+	  (newline out)
+	  (write `(define-constant +default-plato-root+ ,(absolute-path root))
+		 out)
+	  (newline out)
 	  (write '(define-constant +stop-commands+ '("stop" "restart"))
 		   out)
 	  (newline out) (newline out)
 	  
 	  (display ";; paella dispatcher" out) (newline out)
-	  (write `(define http-dispatcher
-		    (plato-make-dispatcher ,(absolute-path root)))
+	  (write '(define http-dispatcher
+		    (plato-make-dispatcher +default-plato-root+))
 		 out)
 	  (newline out) (newline out)
 
@@ -124,6 +130,7 @@
 		   (unless (shared-queue-empty? shared-queue)
 		     (let ((command (shared-queue-get! shared-queue)))
 		       (when (equal? command "restart")
+			 (reload-all-webapp)
 			 (run-server port config remote-port shared-queue)))))
 		 
 		 (thread-start! server-thread)
@@ -144,9 +151,17 @@
 	      out)
 	  (newline out)
 
+	  (display ";; Re-load all roots" out) (newline out)
+	  (pp '(define (reload-all-webapp)
+		 (define (reload-webapps root)
+		   (for-each (lambda (name)
+			       (plato-reload name root http-dispatcher))
+			     (plato-collect-handler root)))
+		 (reload-webapps +default-plato-root+)
+		 (for-each reload-webapps (*plato-roots*))) out)
 	  (display ";; For interactive development" out) (newline out)
-	  (pp `(define (reload-webapp name)
-		 (plato-reload name ,(absolute-path root) http-dispatcher))
+	  (pp '(define (reload-webapp name)
+		 (plato-reload name +default-plato-root+ http-dispatcher))
 	      out)
 	  (newline out)
 
