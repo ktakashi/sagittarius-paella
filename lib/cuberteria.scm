@@ -72,7 +72,7 @@
 			      (slot-set-using-class! class o name v)))))
 	    (list (car r)
 		  (lambda (o v)
-			(setter o (conv v)))
+		    (setter o (conv v)))
 		  (caddr r)))
 	  r)))
   (define-class <converter-mixin> () () :metaclass <converter-meta>)

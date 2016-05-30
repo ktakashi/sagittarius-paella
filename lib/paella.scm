@@ -79,6 +79,7 @@
 	    (sagittarius)
 	    (sagittarius regex)
 	    (sagittarius socket)
+	    (srfi :18 multithreading)
 	    (srfi :39 parameters)
 	    (util port)
 	    (prefix (binary io) binary:) 
@@ -478,7 +479,10 @@
 		   (let ((handler (lookup-handler method path))
 			 (params (append qs (parse-mime headers in)))
 			 (cookies (parse-cookie headers)))
-		     (guard (e (else
+		     (guard (e ((uncaught-exception? e)
+				(http-internal-server-error out
+				 (uncaught-exception-reason e) headers))
+			       (else
 				(http-internal-server-error out e headers)))
 		       (let-values (((status mime content . response-headers)
 				     ;; TODO proper http request
