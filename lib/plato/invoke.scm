@@ -49,6 +49,7 @@
 
 	    ;; for tools
 	    +plato-handler-file+
+	    +plato-meta-file+
 	    +plato-lib-dir+
 	    +plato-app-dir+
 	    make-plato-webapp-name)
@@ -68,6 +69,7 @@
 	    (srfi :39 parameters))
 
 (define-constant +plato-handler-file+ "handler.scm")
+(define-constant +plato-meta-file+    "meta.scm")
 (define-constant +plato-lib-dir+      "lib")
 (define-constant +plato-app-dir+      "apps")
 (define-constant +plato-work-dir+     "work")
@@ -168,9 +170,25 @@ the context of parents.
 (define (make-plato-webapp-name handler)
   (list 'plato 'webapp (string->symbol handler)))
 
+#|
+A meta.scm must contain a alist. The key is
+ - handler:   handler file      (default 'handler.scm')
+ - load-path: library directory (default '.')
+ - ... (not decided yet, so later)
+|#
+(define (read-meta-file file)
+  (if (file-exists? file)
+      (call-with-input-file file read)
+      '()))
+(define (meta-ref meta key default)
+  (cond ((assq key meta) => cadr)
+	(else default)))
+
 (define (plato-load handler root dispatcher)
   (define current-load-path (load-path))
   (define handler-path (build-path* root +plato-app-dir+ handler))
+  (define meta-path (build-path handler-path +plato-meta-file+))
+
   (define work-path (build-path* root +plato-work-dir+ handler))
   ;; allow r7rs style as well
   (define env (environment '(only (sagittarius) library define-library)))
@@ -248,14 +266,19 @@ the context of parents.
 		     dispatcher m (ensure-root-context path)
 		     (create-plato-sub-handler path handler)))))
 		sub-paths)))
+
+  (define meta (read-meta-file meta-path))
+  (define handler-file (meta-ref meta 'handler +plato-handler-file+))
+  (define loading-path (build-path handler-path (meta-ref meta 'load-path ".")))
+
   (unless (file-exists? work-path) (create-directory* work-path))
   (parameterize ((load-path (cons* (build-path root +plato-lib-dir+)
-				   handler-path
+				   loading-path
 				   current-load-path))
 		 ;; make sure loading time can also find resource
 		 (current-directory handler-path))
     ;; TODO should we wrap with guard to make this run anyway?
-    (let ((file (build-path handler-path +plato-handler-file+))
+    (let ((file (build-path handler-path handler-file))
 	  ;; (plato webapp $handler) is the library name
 	  (lib (make-plato-webapp-name handler)))
       (call-with-input-file file
