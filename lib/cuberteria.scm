@@ -57,7 +57,7 @@
 	  (values 200 'file (build-path* (plato-current-path context)
 					 base
 					 (string-append file "." ext))
-		  (list "Content-Type" mime))))))
+		  (list "content-type" mime))))))
 
   ;; <validator-mixin> can also be used but this is more convenient if
   ;; only conversion is needed.
