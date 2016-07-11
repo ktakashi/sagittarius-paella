@@ -34,10 +34,13 @@
 	    cuberteria-map-json-string!
 	    cuberteria-map-json-object!
 	    cuberteria-map-object!
+	    cuberteria-map-request-body!
+	    cuberteria-map-json-request-body!
 	    cuberteria-object->json
 	    ;; for convenience
 	    <converter-meta> <converter-mixin>
-	    )
+
+	    *cuberteria-json-mimes*)
     (import (rnrs)
 	    (paella)
 	    (plato)
@@ -46,9 +49,16 @@
 	    (clos core)
 	    (clos user)
 	    (text json)
+	    (prefix (binary io) binary:)
+	    (util port)
+	    (rfc :5322)
 	    (srfi :1 lists)
 	    (srfi :39 parameters))
 
+  ;; supports some of non RFC mime for JSON as well
+  (define *cuberteria-json-mimes*
+    (make-parameter '("application/json" "text/json")))
+    
   (define (cuberteria-resource-loader mime base)
     (lambda (req)
       (define context (plato-parent-context (*plato-current-context*)))
@@ -92,16 +102,8 @@
     (let ((json (string->json json-string)))
       (cuberteria-map-json-object! obj json)))
 
-  ;; TODO handling *json-map-type*
-  (define (cuberteria-map-json-object! obj json)
-    (define slot-definitions (class-slots (class-of obj)))
-    (define (find-slot-definition slot)
-      (let loop ((def slot-definitions))
-	(cond ((null? def) #f)
-	      ((eq? slot (slot-definition-name (car def))) (car def))
-	      (else (loop (cdr def))))))
-
-    (define (->json-slot param)
+  (define (->json-slot slot-definitions)
+    (lambda (param)
       (let ((slot (car param)))
 	(let loop ((defs slot-definitions))
 	  (cond ((null? defs) (string->symbol slot))
@@ -109,9 +111,15 @@
 			   (slot-definition-option (car defs) 
 						   :json-element-name ""))
 		 (slot-definition-name (car defs)))
-		(else (loop (cdr defs)))))))
+		(else (loop (cdr defs))))))))
 
-    (define (->json-value slot param)
+  (define (->json-value slot-definitions)
+    (lambda (slot param)
+      (define (find-slot-definition slot)
+	(let loop ((def slot-definitions))
+	  (cond ((null? def) #f)
+		((eq? slot (slot-definition-name (car def))) (car def))
+		(else (loop (cdr def))))))
       (let ((v (cdr param))
 	    (s (find-slot-definition slot)))
 	(cond ((slot-definition-option s :json #f) =>
@@ -121,8 +129,14 @@
 		     (let ((obj (make class)))
 		       (cuberteria-map-json-object! obj v))
 		     v)))
-	      (else v))))
-    (cuberteria-map-object! obj json ->json-slot ->json-value))
+	      (else v)))))
+  ;; TODO handling *json-map-type*
+  (define (cuberteria-map-json-object! obj json)
+    (define slot-definitions (class-slots (class-of obj)))
+    
+    (cuberteria-map-object! obj json
+			    (->json-slot slot-definitions)
+			    (->json-value slot-definitions)))
 
   ;; general mapper
   (define (cuberteria-map-object! obj source slot-retriever value-retriever)
@@ -134,6 +148,37 @@
 	      source)
     obj)
 
+  ;; generic version
+  (define (cuberteria-map-request-body! obj request
+					body-reader
+					slot-retriever
+					value-retriever)
+    (let ((body (body-reader (http-request-source request))))
+      (cuberteria-map-object! obj body slot-retriever value-retriever)))
+
+  (define (cuberteria-map-json-request-body! obj request)
+    (define (json-body-reader port)
+      ;; To avoid closing source port by using transcoded-port
+      ;; we do some rather stupid way of reading POST data here
+      ;; NB: closing the port also means closing underlying socket,
+      ;;     that's something we don't want to.
+      (let ((in/out (binary:open-chunked-binary-input/output-port)))
+	(copy-binary-port in/out port)
+	(set-port-position! in/out 0)
+	(parameterize ((*json-map-type* 'alist))
+	  ;; NB: native-transcoder is associated to UTF-8 codec on
+	  ;;     Sagittarius
+	  (json-read (transcoded-port in/out (native-transcoder))))))
+    (let ((ct (rfc5322-header-ref (http-request-headers request)
+				  "content-type")))
+      (or (and (member ct (*cuberteria-json-mimes*) string=?)
+	       (let ((slot-defs (class-slots (class-of obj))))
+		 (cuberteria-map-request-body! obj request
+					       json-body-reader
+					       (->json-slot slot-defs)
+					       (->json-value slot-defs))))
+	  obj)))
+  
   (define (cuberteria-object->json obj :optional (map-type (*json-map-type*)))
     (define (find-name slot)
       (cond ((slot-definition-option slot :json-element-name #f))

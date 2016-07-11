@@ -1,4 +1,5 @@
 (import (rnrs)
+	(paella)
 	(cuberteria)
 	(clos user)
 	(text json)
@@ -52,5 +53,26 @@
 			    :age "forever 18"
 			    :address addr)))
 	      (cuberteria-object->json p 'alist)))
+
+(let ((request (make-http-request 'GET "/" "/"
+				  '(("content-type" "application/json"))
+				  '()
+				  '()
+				  #f ;; socket
+				  (open-bytevector-input-port
+				   (string->utf8 *json-string*))
+				  #f ;; remote address
+				  #f ;; remote port
+				  )))
+  (test-equal "post-data->json"
+    '(#("Takashi") "Kato" "Male" "forever 18" "Leiden" "South Holland")
+    (let ((p (cuberteria-map-json-request-body! (make <person>) 
+						request)))
+      (list (~ p 'first-names)
+	    (~ p 'last-name)
+	    (~ p 'sex)
+	    (~ p 'age)
+	    (~ p 'address 'city)
+	    (~ p 'address 'province)))))
 
 (test-end)

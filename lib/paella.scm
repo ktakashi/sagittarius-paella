@@ -66,6 +66,9 @@
 
 	    ;; parameters
 	    *http-server-name*
+
+	    ;; for testing
+	    make-http-request
 	    )
     (import (rnrs)
 	    (rnrs mutable-pairs)
