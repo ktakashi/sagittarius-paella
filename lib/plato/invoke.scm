@@ -157,15 +157,19 @@ the context of parents.
   (let ((dispatcher (plato-make-dispatcher server-root)))
     (apply plato-run port config dispatcher opts)))
 
+;; FIXME: maybe we should only get directories under app directory
+;;        and let plato-load handle if the given directory contains
+;;         application or not.
 (define (plato-collect-handler root)
   (define (retrieve-path path)
-    (cond ((#/apps(?:\/|\\)([^\/\\]+?)(?:\/|\\)handler.scm$/ path) => 
+    (cond ((#/apps(?:\/|\\)([^\/\\]+?)(?:\/|\\)(?:meta|handler).scm$/ path) => ;; |
 	   (lambda (m) (m 1)))
 	  (else #f)))
   (let ((dir (build-path* root +plato-app-dir+)))
     (filter-map retrieve-path
 		(find-files dir 
-			    :pattern #/^handler.scm$/))))
+			    :pattern #/^(meta|handler).scm$/ ;; |
+					     ))))
 
 (define (make-plato-webapp-name handler)
   (list 'plato 'webapp (string->symbol handler)))
