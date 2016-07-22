@@ -84,7 +84,8 @@
 	   (slot-set! session 'data (acons name value data))))))
 (define (plato-session-delete! session name)
   (let ((data (plato-session-values session)))
-    (slot-set! session (remove! (lambda (x) (equal? name (car x))) data))))
+    (slot-set! session 'data
+	       (remove! (lambda (x) (equal? name (car x))) data))))
 (define (plato-session-ref session name :optional (fallback #f))
   (let ((data (plato-session-values session)))
     (cond ((assoc name data) => cdr)
