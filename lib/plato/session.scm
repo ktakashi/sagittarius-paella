@@ -32,6 +32,8 @@
     (export plato-session-handler
 	    plato-session-values
 	    plato-session-name
+	    plato-session-app
+	    plato-session-created
 	    plato-session-set!
 	    plato-session-ref
 	    *plato-session-id*
@@ -64,8 +66,8 @@
 
 (define-class <plato-session> ()
   ((name :init-keyword :name :reader plato-session-name)
-   (app  :init-keyword :app)
-   (created :init-keyword :created)
+   (app  :init-keyword :app :reader plato-session-app)
+   (created :init-keyword :created :reader plato-session-created)
    ;; alist of session data
    (data :init-keyword :data :init-value '()
 	 :reader plato-session-values)

@@ -40,6 +40,8 @@
 	    ;; for convenience
 	    <converter-meta> <converter-mixin>
 
+	    cuberteria-object-mapping-handler
+	    
 	    *cuberteria-json-mimes*)
     (import (rnrs)
 	    (paella)
@@ -206,6 +208,13 @@
       ((alist) (convert-rec obj values))
       ((vector)
        (list->vector (convert-rec obj vector->list)))))
-	
+
+  (define (cuberteria-object-mapping-handler class next-handler
+					     :key (json? #f))
+    (lambda (req)
+      (let ((obj (cuberteria-map-http-request! (make class) req)))
+	;; map JSON post data
+	(when json? (cuberteria-map-json-request-body! obj req))
+	(next-handler obj req))))
 
 )
