@@ -16,4 +16,10 @@
 					   (value "value"))))))
 		    <tapas-container>))
 
+(test-assert "shtml->tapas-component"
+	     (is-a? (shtml->tapas-component '(& 9776)) <tapas-entity>))
+
+(test-assert "&#9776;"
+	     (tapas-render-component (shtml->tapas-component '(& 9776))))
+
 (test-end)

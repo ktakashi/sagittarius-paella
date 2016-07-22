@@ -35,6 +35,7 @@
 	    <tapas-component>
 	    <tapas-container>
 	    <tapas-page>
+	    <tapas-entity> 		; HTML entity
 
 	    tapas-set-attribute!
 	    tapas-add-components!
@@ -86,6 +87,8 @@
   (set! (~ o 'tag-name) 'html)
   o)
 
+(define-class <tapas-entity> (<tapas-component>) ())
+
 ;; in SXML, text element is the same as string
 (define-method tapas-render-component ((text <string>)) text)
 ;; raw SXML
@@ -124,6 +127,9 @@
     (sxml:change-content! this 
      `((head ,@headers) (body (@ ,@(~ comp 'body-attributes)) ,@content)))
     `(*TOP* ,@pi ,@doctype ,this)))
+
+(define-method tapas-render-component ((entity <tapas-entity>))
+  `(& ,(~ entity 'content)))
 
 ;; convenient method
 (define (tapas-set-attribute! component name value)

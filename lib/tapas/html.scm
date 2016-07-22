@@ -150,6 +150,9 @@
       (set! (~ obj 'components) (map traverse body))
       obj)))
 
+(define (entity-converter traverse shtml pi decl)
+  (make <tapas-entity> :content (cadr shtml)))
+
 (define default-context
   (let ((ht (make-eq-hashtable)))
     (hashtable-set! ht 'div <tapas-container>)
@@ -162,6 +165,7 @@
     (hashtable-set! ht 'option <tapas-option>)
     (hashtable-set! ht 'script <tapas-script>)
     (hashtable-set! ht 'style <tapas-style>)
+    (hashtable-set! ht '& entity-converter)
     (hashtable-set! ht 'html page-converter)
     ht))
 
