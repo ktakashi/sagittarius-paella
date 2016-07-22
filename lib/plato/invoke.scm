@@ -38,6 +38,7 @@
 	    plato-load
 
 	    ;; context
+	    *plato-root-context*
 	    *plato-current-context*
 	    plato-context-root
 	    plato-current-path
@@ -74,6 +75,7 @@
 (define-constant +plato-app-dir+      "apps")
 (define-constant +plato-work-dir+     "work")
 
+(define *plato-root-context* (make-parameter #f))
 (define *plato-current-context* (make-parameter #f))
 
 (define-record-type (<plato-context> make-plato-context plato-context?)
@@ -208,6 +210,11 @@ A meta.scm must contain a alist. The key is
   (define (create-plato-handler proc context)
     (lambda (req)
       (parameterize ((current-directory (plato-current-path context))
+		     ;; we don't have sub sub path, thus parent or
+		     ;; not is good enough. at least for now
+		     (*plato-root-context*
+		      (or (plato-parent-context context)
+			  context))
 		     (*plato-current-context* context))
 	(proc req))))
   (define (create-plato-sub-handler path proc)
@@ -239,6 +246,7 @@ A meta.scm must contain a alist. The key is
 	      (let ((this-path (build-path* root +plato-app-dir+ path)))
 		(unless (file-exists? this-path) (create-directory* this-path))
 		(parameterize ((current-directory this-path)
+			       (*plato-root-context* context)
 			       (*plato-current-context* (make-plato-context
 							 handler-path
 							 this-path
