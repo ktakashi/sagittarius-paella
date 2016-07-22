@@ -35,6 +35,7 @@
 	    plato-session-app
 	    plato-session-created
 	    plato-session-set!
+	    plato-session-delete!
 	    plato-session-ref
 	    *plato-session-id*
 	    *plato-current-session*
@@ -45,6 +46,7 @@
 	    (sagittarius control)
 	    (clos user)
 	    (clos core)
+	    (srfi :1)
 	    (srfi :18)
 	    (srfi :19 time)
 	    (srfi :39 parameters)
@@ -80,6 +82,9 @@
 	   (lambda (slot) (set-cdr! slot value)))
 	  (else
 	   (slot-set! session 'data (acons name value data))))))
+(define (plato-session-delete! session name)
+  (let ((data (plato-session-values session)))
+    (slot-set! session (remove! (lambda (x) (equal? name (car x))) data))))
 (define (plato-session-ref session name :optional (fallback #f))
   (let ((data (plato-session-values session)))
     (cond ((assoc name data) => cdr)
