@@ -48,6 +48,7 @@
 	    (plato)
 	    (util file)
 	    (rfc uri)
+	    (rfc mime)
 	    (clos core)
 	    (clos user)
 	    (text json)
@@ -55,11 +56,12 @@
 	    (util port)
 	    (rfc :5322)
 	    (srfi :1 lists)
+	    (srfi :2 and-let*)
 	    (srfi :39 parameters))
 
   ;; supports some of non RFC mime for JSON as well
   (define *cuberteria-json-mimes*
-    (make-parameter '("application/json" "text/json")))
+    (make-parameter '(("application" "json") ("text" "json"))))
     
   (define (cuberteria-resource-loader mime base)
     (lambda (req)
@@ -164,16 +166,22 @@
       ;; we do some rather stupid way of reading POST data here
       ;; NB: closing the port also means closing underlying socket,
       ;;     that's something we don't want to.
-      (let ((in/out (binary:open-chunked-binary-input/output-port)))
-	(copy-binary-port in/out port)
-	(set-port-position! in/out 0)
-	(parameterize ((*json-map-type* 'alist))
-	  ;; NB: native-transcoder is associated to UTF-8 codec on
-	  ;;     Sagittarius
-	  (json-read (transcoded-port in/out (native-transcoder))))))
-    (let ((ct (rfc5322-header-ref (http-request-headers request)
-				  "content-type")))
-      (or (and (member ct (*cuberteria-json-mimes*) string=?)
+      (or (and-let* ((ctlen (rfc5322-header-ref (http-request-headers request)
+						"content-length"))
+		     (len (string->number ctlen))
+		     (in/out (binary:open-chunked-binary-input/output-port)))
+	    (copy-binary-port in/out port :size len)
+	    (set-port-position! in/out 0)
+	    (parameterize ((*json-map-type* 'alist))
+	      ;; NB: native-transcoder is associated to UTF-8 codec on
+	      ;;     Sagittarius
+	      (json-read (transcoded-port in/out (native-transcoder)))))
+	  '()))
+    (let ((ct (mime-parse-content-type
+	       (rfc5322-header-ref (http-request-headers request)
+				   "content-type"))))
+      (or (and ct
+	       (member (take ct 2) (*cuberteria-json-mimes*))
 	       (let ((slot-defs (class-slots (class-of obj))))
 		 (cuberteria-map-request-body! obj request
 					       json-body-reader
