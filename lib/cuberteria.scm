@@ -111,9 +111,8 @@
       (let ((slot (car param)))
 	(let loop ((defs slot-definitions))
 	  (cond ((null? defs) (string->symbol slot))
-		((string=? slot
-			   (slot-definition-option (car defs) 
-						   :json-element-name ""))
+		((equal? slot (slot-definition-option (car defs) 
+						      :json-element-name ""))
 		 (slot-definition-name (car defs)))
 		(else (loop (cdr defs))))))))
 
@@ -204,7 +203,8 @@
 			  ;; if slot definition :json then the value
 			  ;; is recursively converted
 			  (json? (slot-definition-option slot :json #f)))
-		      (and (slot-bound? obj slot-name)
+		      (and (not (eq? json-name :discard))
+			   (slot-bound? obj slot-name)
 			   (cons json-name 
 				 (handle-array
 				  (if json?
