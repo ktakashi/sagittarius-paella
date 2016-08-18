@@ -516,9 +516,11 @@
 	    (cookies (parse-cookie headers)))
 	(guard (e ((uncaught-exception? e)
 		   (http-internal-server-error out
-		     (uncaught-exception-reason e) headers))
+		     (uncaught-exception-reason e) headers)
+		   (finish in out))
 		  (else
-		   (http-internal-server-error out e headers)))
+		   (http-internal-server-error out e headers)
+		   (finish in out)))
 	  (let-values (((status mime content . response-headers)
 			;; TODO proper http request
 			(handler (make-http-request
