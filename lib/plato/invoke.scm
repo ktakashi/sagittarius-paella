@@ -272,6 +272,9 @@ A meta.scm must contain a alist. The key is
 
     (let ((sub-paths (guard (e (else '())) (eval '(mount-paths) env))))
       (for-each (match-lambda
+		 (('UPGRADE path handler)
+		  (http-add-protocol-handler! dispatcher
+		   (ensure-root-context path) handler))
 		 (((methods ...) path handler)
 		  (dolist (m methods)
 		    (http-add-dispatcher!
