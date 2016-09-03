@@ -201,7 +201,9 @@
 
 (define (plato-add-webapp root name)
   (create-directory* (build-path* root +plato-app-dir+ name))
-  (let ((file (build-path* root +plato-app-dir+ name +plato-handler-file+)))
+  (let* ((filename (format "~a.scm" name))
+	 (file (build-path* root +plato-app-dir+ name filename))
+	 (meta (build-path* root +plato-app-dir+ name +plato-meta-file+)))
     (unless (file-exists? file)
       (call-with-output-file file
 	(lambda (out)
@@ -214,6 +216,11 @@
 		 (define (support-methods) '(GET))
 		 (define (entry-point req)
 		   (values 200 'text/plain "OK")))
-	      out))))))
+	      out))))
+    (unless (file-exists? meta)
+      (call-with-output-file meta
+	(lambda (out)
+	  (display ";; auto generated stub" out) (newline out)
+	  (pp `((handler ,filename)) out))))))
 
 )

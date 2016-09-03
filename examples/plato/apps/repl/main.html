@@ -1,0 +1,29 @@
+<html>
+  <head>
+    <title>Online REPL</title>
+    <script type="text/javascript">
+<!--
+var websocket = undefined;
+function start_repl(port) {
+    websocket = new WebSocket("ws://localhost:" + port + "/repl/eval", "repl");
+    websocket.onopen = function(event) {
+	document.getElementById("results").innerHTML = "Welcome to Sagittarius online REPL";
+    };
+    websocket.onmessage = function(event) {
+	var old = document.getElementById("results").innerHTML;
+	document.getElementById("results").innerHTML = old + "\n> " + event.data;
+    }
+}
+function send_expression(expr) {
+    var v = document.getElementById("expr").value;
+    websocket.send(v);
+}
+-->
+    </script>
+  </head>
+  <body>
+    <textarea id="results" style="width:50%; height: 500px"></textarea><br />
+    <input id="expr" />
+    <input type="button" onclick="send_expression()" value="Run">
+  </body>
+</html>

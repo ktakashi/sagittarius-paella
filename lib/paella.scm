@@ -37,6 +37,7 @@
 	    *http-not-found-handler*
 	    make-http-server-dispatcher
 	    http-add-dispatcher!
+	    http-add-protocol-handler!
 
 	    ;; records
 	    ;; request
@@ -49,6 +50,7 @@
 	    http-request-cookies
 	    http-request-socket
 	    http-request-source
+	    http-request-port
 	    http-request-remote-address
 	    http-request-remote-port
 	    ;; parameter
@@ -118,10 +120,16 @@
 (define-record-type (<http-dispatcher> make-http-dispatcher http-dispatcher?)
   (fields (immutable table http-dispatcher-table)
 	  (mutable patterns http-dispatcher-patterns 
-		   http-dispatcher-patterns-set!))
+		   http-dispatcher-patterns-set!)
+	  ;; for HTTP 101
+	  (immutable protocol-handlers
+		     http-dispatcher-protocol-handlers)
+	  (immutable upgraded-sockets
+		     http-dispatcher-upgraded-sockets))
   (protocol (lambda (p)
 	      (lambda ()
-		(p (make-string-hashtable) '())))))
+		(p (make-string-hashtable) '()
+		   (make-string-hashtable) (make-eq-hashtable))))))
 
 (define-syntax make-http-server-dispatcher
   (syntax-rules (*)
@@ -177,6 +185,10 @@
 	 (assertion-violation 'http-add-dispatcher!
 			      "string or regex pattern required" path))))
 
+(define (http-add-protocol-handler! dispatcher path handler)
+  (let ((protocols (http-dispatcher-protocol-handlers dispatcher)))
+    (hashtable-set! protocols path handler)
+    dispatcher))
 
 (define-record-type (<http-request> make-http-request http-request?)
   (fields (immutable method  http-request-method)
@@ -190,6 +202,7 @@
 	  (immutable socket  http-request-socket)
 	  ;; raw POST?
 	  (immutable source  http-request-source)
+	  (immutable port    http-request-port) ;; host port
 	  (immutable remote-addr http-request-remote-address)
 	  (immutable remote-port http-request-remote-port)))
 (define-record-type (<http-parameter> make-http-parameter http-parameter?)
@@ -402,8 +415,9 @@
     (and logger
 	 (info-log logger (format "[~a] ~a ~a" ip method path))))
   (lambda (server socket)
-    (define in (buffered-port (socket-input-port socket) (buffer-mode line)))
-    (define out (buffered-port (socket-output-port socket) (buffer-mode block)))
+    ;; we can't use buffered-port here since swtiching protocol
+    ;; may require buffer values.
+    (define raw-in (socket-input-port socket))    
     (define peer (socket-peer socket))
     (define (fixup-status status)
       (if (pair? status)
@@ -486,51 +500,98 @@
 		       (cons (parse-cookie-string (cadr header)) acc)
 		       acc)) '() headers))
 
-    (let ((first (binary:get-line in)))
-      (cond ((eof-object? first)) ;; why
-	    ((#/(\w+)\s+([^\s]+)\s+HTTP\/([\d\.]+)/ first) =>
-	     (lambda (m)
-	       (let* ((method (utf8->string (m 1)))
-		      (opath   (utf8->string (m 2)))
-		      (prot   (m 3))
-		      (headers (rfc5322-read-headers in))
-		      (ip-address (ip-address->string 
-				   (slot-ref peer 'ip-address))))
-		 (write-log method opath ip-address)
-		 (let-values (((path qs frg) (parse-path opath)))
-		   (let ((handler (lookup-handler method path))
-			 (params (append qs (parse-mime headers in)))
-			 (cookies (parse-cookie headers)))
-		     (guard (e ((uncaught-exception? e)
-				(http-internal-server-error out
-				 (uncaught-exception-reason e) headers))
-			       (else
-				(http-internal-server-error out e headers)))
-		       (let-values (((status mime content . response-headers)
-				     ;; TODO proper http request
-				     (handler (make-http-request
-					       method path opath 
-					       headers params cookies 
-					       socket in
-					       ip-address
-					       (slot-ref peer 'port)))))
-			 (when (and status (not (eq? mime 'none)))
-			   (http-emit-response out headers
-					       (fixup-status status)
-					       mime content
-					       response-headers)))))))))
-	    (else
-	     (let ((data (get-bytevector-all in)))
-	       (http-internal-server-error out #f
-		(if (eof-object? data) "no data" (utf8->string data)))))))
-    (flush-output-port out)
-    ;; close the socket
-    ;; if something is still there, discard it.
-    (unless (null? (socket-read-select 0 socket))
-      (get-bytevector-all in))
-    (socket-shutdown socket SHUT_RDWR)
-    (socket-close socket)))
+    (define (finish in out)
+      (flush-output-port out)
+      ;; close the socket
+      ;; if something is still there, discard it.
+      (unless (null? (socket-read-select 0 socket))
+	(get-bytevector-all in))
+      (close-port in)
+      (close-port out)
+      (socket-shutdown socket SHUT_RDWR)
+      (socket-close socket))
 
+    ;; let the protocol handler handle everything
+    ;; since it's not an HTTP anymore
+    (define (invoke-protocol proc method path)
+      ;; process must return
+      (let ((r (proc socket method path)))
+	(if (socket-closed? socket)
+	    (hashtable-delete! (http-dispatcher-upgraded-sockets dispatcher)
+			       socket)
+	    (hashtable-set! (http-dispatcher-upgraded-sockets dispatcher)
+			    socket r))))
+
+    (define (handle-http method opath path qs frg)
+      (define in (buffered-port raw-in (buffer-mode line)))
+      (define out (buffered-port (socket-output-port socket)
+				 (buffer-mode block)))
+      (define headers (rfc5322-read-headers in))
+      
+      (let ((handler (lookup-handler method path))
+	    (params (append qs (parse-mime headers in)))
+	    (cookies (parse-cookie headers)))
+	(guard (e ((uncaught-exception? e)
+		   (http-internal-server-error out
+		     (uncaught-exception-reason e) headers)
+		   (finish in out))
+		  (else
+		   (http-internal-server-error out e headers)
+		   (finish in out)))
+	  (let-values (((status mime content . response-headers)
+			;; TODO proper http request
+			(handler (make-http-request
+				  method path opath 
+				  headers params cookies 
+				  socket in
+				  (slot-ref server 'port)
+				  (ip-address->string 
+				   (slot-ref peer 'ip-address))
+				  (slot-ref peer 'port)))))
+	    (when (and status (not (eq? mime 'none)))
+	      (http-emit-response out headers
+				  (fixup-status status)
+				  mime content
+				  response-headers))
+	    (finish in out)))))
+    (define (handle-unexpected)
+      (define in (buffered-port raw-in (buffer-mode line)))
+      (define out (buffered-port (socket-output-port socket)
+				 (buffer-mode block)))
+      
+      (let ((data (get-bytevector-all in)))
+	(http-internal-server-error out #f
+	  (if (eof-object? data) "no data" (utf8->string data)))
+	(finish in out)))
+    
+    (define upgraded-sockets (http-dispatcher-upgraded-sockets dispatcher))
+
+    (cond ((hashtable-ref upgraded-sockets socket) =>
+	   (lambda (next)
+	     (next socket)
+	     (when (socket-closed? socket)
+	       (hashtable-delete! (http-dispatcher-upgraded-sockets dispatcher)
+				  socket))))
+	  (else
+	   (let ((first (binary:get-line raw-in)))
+	     (cond ((eof-object? first)) ;; why
+		   ((#/(\w+)\s+([^\s]+)\s+HTTP\/([\d\.]+)/ first) =>
+		    (lambda (m)
+		      (let ((method (utf8->string (m 1)))
+			    (opath  (utf8->string (m 2)))
+			    (prot   (m 3))
+			    (protocols (http-dispatcher-protocol-handlers
+					dispatcher))
+			    (ip-address (ip-address->string 
+					 (slot-ref peer 'ip-address))))
+			(write-log method opath ip-address)
+			(let-values (((path qs frg) (parse-path opath)))
+			  (cond ((hashtable-ref protocols path) =>
+				 (lambda (proc)
+				   (invoke-protocol proc method opath)))
+				(else
+				 (handle-http method opath path qs frg)))))))
+		   (else (handle-unexpected))))))))
 
 (define (http-file-handler file mime)
   (lambda (req)
