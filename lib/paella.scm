@@ -84,11 +84,16 @@
 	    (sagittarius socket)
 	    (srfi :18 multithreading)
 	    (srfi :39 parameters)
-	    (util port)
 	    (prefix (binary io) binary:) 
 	    (text sxml serializer)
 	    (text sxml html-parser)
+	    (util file)
+	    (util port)
+	    (util logging)
 	    (pp))
+
+(define *http-log-directory* 
+  (make-parameter (build-path (current-directory) "logs")))
 
 (define (default-not-found-handler req)
   (values 404 'text/plain "Not Found"))
@@ -385,6 +390,17 @@
     (505 "HTTP Version Not Supported")))
 
 (define (http-server-handler dispatcher)
+  (define log-dir (*http-log-directory*))
+  (define logger
+    (and log-dir
+	 (create-directory* log-dir)
+	 (make-async-logger +info-level+
+	  ;; TODO console log?
+	  (make-daily-rolling-file-appender "~w5 ~m"
+	   (build-path log-dir "access-log.log")))))
+  (define (write-log method path ip)
+    (and logger
+	 (info-log logger (format "[~a] ~a ~a" ip method path))))
   (lambda (server socket)
     (define in (buffered-port (socket-input-port socket) (buffer-mode line)))
     (define out (buffered-port (socket-output-port socket) (buffer-mode block)))
@@ -477,7 +493,10 @@
 	       (let* ((method (utf8->string (m 1)))
 		      (opath   (utf8->string (m 2)))
 		      (prot   (m 3))
-		      (headers (rfc5322-read-headers in)))
+		      (headers (rfc5322-read-headers in))
+		      (ip-address (ip-address->string 
+				   (slot-ref peer 'ip-address))))
+		 (write-log method opath ip-address)
 		 (let-values (((path qs frg) (parse-path opath)))
 		   (let ((handler (lookup-handler method path))
 			 (params (append qs (parse-mime headers in)))
@@ -493,8 +512,7 @@
 					       method path opath 
 					       headers params cookies 
 					       socket in
-					       (ip-address->string 
-						(slot-ref peer 'ip-address))
+					       ip-address
 					       (slot-ref peer 'port)))))
 			 (when (and status (not (eq? mime 'none)))
 			   (http-emit-response out headers
