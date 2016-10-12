@@ -68,7 +68,7 @@
 
 	    ;; parameters
 	    *http-server-name*
-
+	    *http-log-directory*
 	    ;; for testing
 	    make-http-request
 	    )

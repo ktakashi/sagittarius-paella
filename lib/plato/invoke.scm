@@ -48,6 +48,8 @@
 	    plato-context-lock
 	    with-plato-context-lock
 
+	    ;; for logging
+	    *plato-logger*
 	    ;; for tools
 	    +plato-handler-file+
 	    +plato-meta-file+
@@ -64,6 +66,7 @@
 	    (clos user)
 	    (match)
 	    (util file)
+	    (util logging)
 	    (rfc uri)
 	    (srfi :1 lists)
 	    (srfi :18 multithreading)
@@ -77,6 +80,31 @@
 
 (define *plato-root-context* (make-parameter #f))
 (define *plato-current-context* (make-parameter #f))
+
+(define *plato-logger* (make-parameter #f))
+(define-syntax write-log
+  (lambda (x)
+    (define (->check level)
+      (string->symbol (format "logger-~a?" (syntax->datum level))))
+    (define (->logging level)
+      (string->symbol (format "~a-log" (syntax->datum level))))
+    (syntax-case x ()
+      ((k level msg)
+       (with-syntax ((check (datum->syntax #'k (->check #'level)))
+		     (logging (datum->syntax #'k (->logging #'level))))
+	 #'(let ((l (*plato-logger*))) 
+	     (when (and l (check l)) (logging l msg)))))
+      ((k level fmt args ...)
+       #'(k level (format fmt args ...))))))
+(define-syntax write-debug-log
+  (syntax-rules ()
+    ((_ msg ...) (write-log debug msg ...))))
+(define-syntax write-info-log
+  (syntax-rules ()
+    ((_ msg ...) (write-log info msg ...))))
+(define-syntax write-error-log
+  (syntax-rules ()
+    ((_ msg ...) (write-log error msg ...))))
 
 (define-record-type (<plato-context> make-plato-context plato-context?)
   (fields (immutable context-root plato-context-root) ;; should we?
@@ -167,11 +195,9 @@ the context of parents.
     (cond ((#/apps(?:\/|\\)([^\/\\]+?)(?:\/|\\)(?:meta|handler).scm$/ path) => ;; |
 	   (lambda (m) (m 1)))
 	  (else #f)))
+  (write-info-log "Loading application in ~a" root)
   (let ((dir (build-path* root +plato-app-dir+)))
-    (filter-map retrieve-path
-		(find-files dir 
-			    :pattern #/^(meta|handler).scm$/ ;; |
-					     ))))
+    (filter-map retrieve-path (find-files dir :pattern #/.+\.scm$/))))
 
 (define (make-plato-webapp-name handler)
   (list 'plato 'webapp (string->symbol handler)))
@@ -273,13 +299,15 @@ A meta.scm must contain a alist. The key is
     (let ((sub-paths (guard (e (else '())) (eval '(mount-paths) env))))
       (for-each (match-lambda
 		 (('UPGRADE path handler)
-		  (http-add-protocol-handler! dispatcher
-		   (ensure-root-context path) handler))
+		  (let ((p (ensure-root-context path)))
+		    (write-debug-log "Adding ~a on ~a" p 'UPGRADE)
+		    (http-add-protocol-handler! dispatcher p handler)))
 		 (((methods ...) path handler)
-		  (dolist (m methods)
-		    (http-add-dispatcher!
-		     dispatcher m (ensure-root-context path)
-		     (create-plato-sub-handler path handler)))))
+		  (let ((p (ensure-root-context path)))
+		    (dolist (m methods)
+		      (write-debug-log "Adding ~a on ~a" p m)
+		      (http-add-dispatcher! dispatcher m p
+		       (create-plato-sub-handler path handler))))))
 		sub-paths)))
 
   (define meta (read-meta-file meta-path))
@@ -287,6 +315,8 @@ A meta.scm must contain a alist. The key is
   (define loading-path (build-path handler-path (meta-ref meta 'load-path ".")))
 
   (unless (file-exists? work-path) (create-directory* work-path))
+  (display (*plato-logger*)) (newline)
+  (write-info-log "Loading ~a" handler)
   (parameterize ((load-path (cons* (build-path root +plato-lib-dir+)
 				   loading-path
 				   current-load-path))
@@ -303,14 +333,19 @@ A meta.scm must contain a alist. The key is
 	      (eval e env)
 	      (loop (read/ss in))))))
       ;; we load the library
-      (let* ((e (environment lib))
-	     (methods (eval '(support-methods) e))
-	     (proc (eval 'entry-point e))
-	     (path (string-append "/" handler)))
-	(dolist (m methods)
-	  (http-add-dispatcher! 
-	   dispatcher m path 
-	   (create-plato-handler proc context)))
-	(sub-context path e)))))
+      (guard (e (else
+		 (write-error-log "Failed to load ~a~%~a" handler
+				  (call-with-output-string
+				    (lambda (out) (report-error e out))))))
+	(let* ((e (environment lib))
+	       (methods (eval '(support-methods) e))
+	       (proc (eval 'entry-point e))
+	       (path (string-append "/" handler)))
+	  (dolist (m methods)
+	    (write-debug-log "Adding ~a on ~a" path m)
+	    (http-add-dispatcher! 
+	     dispatcher m path 
+	     (create-plato-handler proc context)))
+	  (sub-context path e))))))
 
 )
