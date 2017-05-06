@@ -316,7 +316,6 @@ A meta.scm must contain a alist. The key is
   (define loading-path (build-path handler-path (meta-ref meta 'load-path ".")))
 
   (unless (file-exists? work-path) (create-directory* work-path))
-  (display (*plato-logger*)) (newline)
   (write-info-log "Loading ~a" handler)
   (parameterize ((load-path (cons* (build-path root +plato-lib-dir+)
 				   loading-path
