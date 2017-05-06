@@ -177,9 +177,10 @@ the context of parents.
       (plato-load handler server-root dispatcher))
     dispatcher))
 
-(define (plato-run port config dispatcher . opts)
+(define (plato-run port config dispatcher :key context :allow-other-keys opts)
   (let ((server (make-simple-server port (http-server-handler dispatcher)
-				    :config config)))
+				    :config config
+				    :context context)))
     (apply server-start! server opts)
     (values server dispatcher)))
 
