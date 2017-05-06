@@ -53,6 +53,7 @@
 	    http-request-port
 	    http-request-remote-address
 	    http-request-remote-port
+	    http-request-server-context
 	    ;; parameter
 	    http-parameter?
 	    http-parameter-name
@@ -205,7 +206,8 @@
 	  (immutable source  http-request-source)
 	  (immutable port    http-request-port) ;; host port
 	  (immutable remote-addr http-request-remote-address)
-	  (immutable remote-port http-request-remote-port)))
+	  (immutable remote-port http-request-remote-port)
+	  (immutable server-context http-request-server-context)))
 (define-record-type (<http-parameter> make-http-parameter http-parameter?)
   (fields (immutable name    http-parameter-name)
 	  (immutable value   http-parameter-value)
@@ -548,7 +550,8 @@
 				  (slot-ref server 'port)
 				  (ip-address->string 
 				   (slot-ref peer 'ip-address))
-				  (slot-ref peer 'port)))))
+				  (slot-ref peer 'port)
+				  (server-context server)))))
 	    (when (and status (not (eq? mime 'none)))
 	      (http-emit-response out headers
 				  (fixup-status status)

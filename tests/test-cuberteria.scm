@@ -54,16 +54,19 @@
 			    :address addr)))
 	      (cuberteria-object->json p 'alist)))
 
-(let ((request (make-http-request 'GET "/" "/"
-				  '(("content-type" "application/json"))
-				  '()
-				  '()
-				  #f ;; socket
-				  (open-bytevector-input-port
-				   (string->utf8 *json-string*))
-				  #f ;; remote address
-				  #f ;; remote port
-				  )))
+(let* ((len (number->string (string-length *json-string*)))
+       (request (make-http-request 'GET "/" "/"
+				   `(("content-type" "application/json")
+				     ("content-length" ,len))
+				     '()
+				     '()
+				     #f ;; socket
+				     (open-bytevector-input-port
+				      (string->utf8 *json-string*))
+				     "80"
+				     #f ;; remote address
+				     #f ;; remote port
+				     #f)))
   (test-equal "post-data->json"
     '(#("Takashi") "Kato" "Male" "forever 18" "Leiden" "South Holland")
     (let ((p (cuberteria-map-json-request-body! (make <person>) 
