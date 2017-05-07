@@ -38,6 +38,7 @@
 	    make-http-server-dispatcher
 	    http-add-dispatcher!
 	    http-add-protocol-handler!
+	    http-add-filter! http-filter
 
 	    ;; records
 	    ;; request
@@ -86,8 +87,10 @@
 	    (rfc gzip)
 	    (rfc tls)
 	    (clos user)
+	    (srfi :1 lists)
 	    (srfi :18 multithreading)
 	    (srfi :39 parameters)
+	    (srfi :117 list-queues)
 	    (prefix (binary io) binary:) 
 	    (text sxml serializer)
 	    (text sxml html-parser)
@@ -127,14 +130,21 @@
 	  (immutable protocol-handlers
 		     http-dispatcher-protocol-handlers)
 	  (immutable upgraded-sockets
-		     http-dispatcher-upgraded-sockets))
+		     http-dispatcher-upgraded-sockets)
+	  (immutable filters http-dispatcher-filters ))
   (protocol (lambda (p)
 	      (lambda ()
 		(p (make-string-hashtable) '()
-		   (make-string-hashtable) (make-eq-hashtable))))))
+		   (make-string-hashtable) (make-eq-hashtable)
+		   (list-queue))))))
 
+(define-syntax http-filter (syntax-rules ()))
 (define-syntax make-http-server-dispatcher
-  (syntax-rules (*)
+  (syntax-rules (* http-filter)
+    ((_ "dispatch" table ((http-filter path handler) next ...))
+     (let ((p handler))
+       (http-add-filter! table path p)
+       (make-http-server-dispatcher "dispatch" table (next ...))))
     ((_ "dispatch" table (((method method* ...) path handler) next ...))
      (begin
        (make-http-server-dispatcher "dispatch" table ((method path handler)))
@@ -191,6 +201,10 @@
   (let ((protocols (http-dispatcher-protocol-handlers dispatcher)))
     (hashtable-set! protocols path handler)
     dispatcher))
+
+(define (http-add-filter! dispatcher path filter)
+  (list-queue-add-back! (http-dispatcher-filters dispatcher) (cons path filter))
+  dispatcher)
 
 (define-record-type (<http-request> make-http-request http-request?)
   (fields (immutable method  http-request-method)
@@ -525,6 +539,22 @@
 	    (hashtable-set! (http-dispatcher-upgraded-sockets dispatcher)
 			    socket r))))
 
+    (define (invoke-handler dispatcher handler path http-request)
+      (define (path-match? template&filter)
+	(let ((template (car template&filter))
+	      (filter (cdr template&filter)))
+	  (cond ((string? template) (and (string=? path template) filter))
+		((pattern? template) (and (template path) filter))
+		(else #f))))
+      (define filters
+	(filter-map path-match?
+		    (list-queue-list (http-dispatcher-filters dispatcher))))
+      (let ((invoke
+	     (fold-right (lambda (filter acc) (lambda (req) (filter req acc)))
+			 (lambda (req) (handler req))
+			 filters)))
+	(invoke http-request)))
+    
     (define (handle-http method opath path qs frg)
       (define in (buffered-port raw-in (buffer-mode line)))
       (define out (buffered-port (socket-output-port socket)
@@ -543,15 +573,16 @@
 		   (finish in out)))
 	  (let-values (((status mime content . response-headers)
 			;; TODO proper http request
-			(handler (make-http-request
-				  method path opath 
-				  headers params cookies 
-				  socket in
-				  (slot-ref server 'port)
-				  (ip-address->string 
-				   (slot-ref peer 'ip-address))
-				  (slot-ref peer 'port)
-				  (server-context server)))))
+			(invoke-handler dispatcher handler path
+					(make-http-request
+					 method path opath 
+					 headers params cookies 
+					 socket in
+					 (slot-ref server 'port)
+					 (ip-address->string 
+					  (slot-ref peer 'ip-address))
+					 (slot-ref peer 'port)
+					 (server-context server)))))
 	    (when (and status (not (eq? mime 'none)))
 	      (http-emit-response out headers
 				  (fixup-status status)
