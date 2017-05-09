@@ -419,6 +419,43 @@
     (504 "Gateway Timeout")
     (505 "HTTP Version Not Supported")))
 
+(define (read-chunk in)
+  (let-values (((out extract) (open-bytevector-output-port)))
+    (let loop ((chunk-size #f))
+      ;; remove CRLF of previous chunk
+      (when chunk-size (binary:get-line in))
+      (let ((line (binary:get-line in)))
+	(when (eof-object? line)
+	  (error 'read-chunk "chunk body ended prematurely"))
+	(cond ((#/^([0-9a-fA-F]+)/ (utf8->string line)) =>
+	       (lambda (m)
+		 (let ((digits (string->number (m 1) 16)))
+		   (if (zero? digits)
+		       (do ((line (binary:get-line in) (binary:get-line in)))
+			   ((or (eof-object? line)
+				(zero? (bytevector-length line)))
+			    (extract)))
+		       (begin
+			 (copy-binary-port out in :size digits)
+			 (loop digits))))))
+	      (else (error 'read-chunk "bad line in chunked data" line)))))))
+    
+(define (read-form-data headers in)
+  (cond ((rfc5322-header-ref headers "content-length") =>
+	 (lambda (v) (get-bytevector-n in (string->number v))))
+	((equal? (rfc5322-header-ref headers "transfer-encoding") "chunked")
+	 (read-chunk in))
+	(else
+	 ;; ok we can't do much
+	 (let-values (((out extract) (open-bytevector-output-port)))
+	   (let loop ((first #t))
+	     (let ((u8 (get-u8 in)))
+	       (if (eof-object? u8)
+		   (if first u8 (extract))
+		   (begin
+		     (put-u8 out u8)
+		     (loop #f)))))))))
+
 (define (http-server-handler dispatcher)
   (define log-dir (*http-log-directory*))
   (define logger
@@ -489,7 +526,7 @@
 		  (get-names&contents body))
 		(and-let* (( (string=? (car parsed) "application") )
 			   ( (string=? (cadr parsed) "x-www-form-urlencoded") )
-			   (data (get-bytevector-all in))
+			   (data (read-form-data in))
 			   ( (not (eof-object? data)) ))
 		  (query-string->alist (utf8->string data)))))
 	  '()))
