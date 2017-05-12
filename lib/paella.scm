@@ -526,7 +526,7 @@
 		  (get-names&contents body))
 		(and-let* (( (string=? (car parsed) "application") )
 			   ( (string=? (cadr parsed) "x-www-form-urlencoded") )
-			   (data (read-form-data in))
+			   (data (read-form-data headers in))
 			   ( (not (eof-object? data)) ))
 		  (query-string->alist (utf8->string data)))))
 	  '()))
@@ -581,7 +581,7 @@
 	(let ((template (car template&filter))
 	      (filter (cdr template&filter)))
 	  (cond ((string? template) (and (string=? path template) filter))
-		((pattern? template) (and (template path) filter))
+		((regex-pattern? template) (and (template path) filter))
 		(else #f))))
       (define filters
 	(filter-map path-match?
