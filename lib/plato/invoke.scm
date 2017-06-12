@@ -271,7 +271,9 @@ A meta.scm must contain a alist. The key is
 	    (let-values (((scheme ui hs p path q f) (uri-parse uri)))
 	      ;; path must be there
 	      (let ((this-path (build-path* root +plato-app-dir+ path)))
-		(unless (file-exists? this-path) (create-directory* this-path))
+		;; we don't create work directory
+		;;(unless (file-exists? this-path)
+		;;  (create-directory* this-path))
 		(parameterize ((current-directory this-path)
 			       (*plato-root-context* context)
 			       (*plato-current-context* (make-plato-context
