@@ -92,7 +92,7 @@
 	  (else fallback))))
 
 ;;; Sessions are files for now. this may not be secure but for now it's ok
-(define (plato-session-handler proc)
+(define (plato-session-handler proc :key (secure? #f) (path #f))
   (lambda (req)
     (define plato-context (*plato-current-context*))
     ;; application name
@@ -119,7 +119,8 @@
 				     ;; forcing offset to be 0
 				     :expires (time-utc->date when 0)
 				     :http-only #t
-				     :path (string-append "/" app))))
+				     :path (or path (string-append "/" app))
+				     :secure secure?)))
 	   (apply values status mime content 
 		  (cons (list "set-cookie" (cookie->string cookie)) rest))))
        (unless (equal? session-data (slot-ref session 'data))
