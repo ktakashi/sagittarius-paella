@@ -69,6 +69,7 @@
 	    (util logging)
 	    (rfc uri)
 	    (srfi :1 lists)
+	    (srfi :14 char-sets)
 	    (srfi :18 multithreading)
 	    (srfi :39 parameters))
 
@@ -217,6 +218,9 @@ A meta.scm must contain a alist. The key is
   (cond ((assq key meta) => cadr)
 	(else default)))
 
+(define path-set
+  (string->char-set "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYG%~_-"))
+
 (define (plato-load handler root dispatcher)
   (define current-load-path (load-path))
   (define handler-path (build-path* root +plato-app-dir+ handler))
@@ -254,35 +258,24 @@ A meta.scm must contain a alist. The key is
 	(cond ((#/^\/+(.+)/ p) => 
 	       (lambda (m) (create-if-needed (m 1))))
 	      (else (create-if-needed p)))))
-
-    (if (string? path)
-	(create-plato-handler 
+    (define (regex->path regex)
+      (define (->percent c) (format "%~x" (char->integer c)))
+      (define (path-char? c) (char-set-contains? path-set c))
+      (let-values (((out extract) (open-string-output-port)))
+	(string-for-each (lambda (c)
+			   (if (path-char? c)
+			       (put-char out c)
+			       (put-string out (->percent c))))
+			 (regex-pattern regex))
+	(extract)))
+    (create-plato-handler 
 	 proc
 	 (make-plato-context handler-path
-			     (ensure-path path)
+			     (ensure-path
+			      (if (string? path) path (regex->path path)))
 			     work-path ;; TODO should we separate?
 			     context
-			     handler))
-	;; unfortunately, we can't determine now.
-	;; so it'll be runtime
-	(lambda (req)
-	  ;; at least at this point, it's matched
-	  (let ((uri (http-request-uri req)))
-	    (let-values (((scheme ui hs p path q f) (uri-parse uri)))
-	      ;; path must be there
-	      (let ((this-path (build-path* root +plato-app-dir+ path)))
-		;; we don't create work directory
-		;;(unless (file-exists? this-path)
-		;;  (create-directory* this-path))
-		(parameterize ((current-directory this-path)
-			       (*plato-root-context* context)
-			       (*plato-current-context* (make-plato-context
-							 handler-path
-							 this-path
-							 work-path
-							 context
-							 handler)))
-		  (proc req))))))))
+			     handler)))
   
   (define (sub-context parent env)
     ;; adding parent context
