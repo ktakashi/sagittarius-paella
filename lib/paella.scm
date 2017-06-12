@@ -547,12 +547,12 @@
 			      (*http-not-found-handler*))))))
 
     (define (parse-cookie headers)
-      (fold-left (lambda (acc header)
-		   ;; we know the header name is downcased but
-		   ;; use string-ci=?
-		   (if (string-ci=? "cookie" (car header))
-		       (cons (parse-cookie-string (cadr header)) acc)
-		       acc)) '() headers))
+      (append-map (lambda (header)
+		    ;; we know the header name is downcased but
+		    ;; use string-ci=?
+		    (if (string-ci=? "cookie" (car header))
+			(parse-cookies-string (cadr header))
+			'())) headers))
 
     (define (finish in out)
       (flush-output-port out)
