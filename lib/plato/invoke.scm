@@ -330,7 +330,7 @@ A meta.scm must contain a alist. The key is
       ;; we load the library
       (guard (e (else
 		 (write-error-log "Failed to load ~a~%~a" handler
-				  (call-with-output-string
+				  (call-with-string-output-port
 				    (lambda (out) (report-error e out))))))
 	(let* ((e (environment lib))
 	       (methods (eval '(support-methods) e))
