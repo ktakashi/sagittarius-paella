@@ -445,6 +445,7 @@
 	 (lambda (v) (get-bytevector-n in (string->number v))))
 	((equal? (rfc5322-header-ref headers "transfer-encoding") "chunked")
 	 (read-chunk in))
+	((not (port-ready? in)) #vu8())
 	(else
 	 ;; ok we can't do much
 	 (let-values (((out extract) (open-bytevector-output-port)))
