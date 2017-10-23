@@ -481,7 +481,7 @@
 		(else (list status "Unknown status")))))
     ;; lazy
     (define (mime-handler packet port)
-      (get-bytevector-all port))
+      (open-bytevector-input-port (get-bytevector-all port)))
 
     (define (%uri-decode bv)
       (call-with-bytevector-output-port
