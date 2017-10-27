@@ -556,13 +556,15 @@
 			'())) headers))
 
     (define (finish in out)
-      (flush-output-port out)
-      ;; close the socket
-      ;; if something is still there, discard it.
-      (unless (null? (socket-read-select 0 socket))
-	(get-bytevector-all in))
-      (close-port in)
-      (close-port out)
+      (when out
+	(flush-output-port out)
+	(close-port out))
+      (when in
+	;; close the socket
+	;; if something is still there, discard it.
+	(unless (null? (socket-read-select 0 socket))
+	  (get-bytevector-all in))
+	(close-port in))
       (socket-shutdown socket SHUT_RDWR)
       (socket-close socket))
 
@@ -647,7 +649,7 @@
 				  socket))))
 	  (else
 	   (let ((first (binary:get-line raw-in)))
-	     (cond ((eof-object? first)) ;; why
+	     (cond ((eof-object? first) (finish raw-in #f)) ;; why
 		   ((#/(\w+)\s+([^\s]+)\s+HTTP\/([\d\.]+)/ first) =>
 		    (lambda (m)
 		      (let ((method (utf8->string (m 1)))
