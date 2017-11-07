@@ -2,7 +2,7 @@
 ;;;
 ;;; paella.scm - Simple HTTP server for Sagittarius
 ;;;  
-;;;   Copyright (c) 2015  Takashi Kato  <ktakashi@ymail.com>
+;;;   Copyright (c) 2015-2017  Takashi Kato  <ktakashi@ymail.com>
 ;;;   
 ;;;   Redistribution and use in source and binary forms, with or without
 ;;;   modification, are permitted provided that the following conditions
@@ -55,6 +55,7 @@
 	    http-request-remote-address
 	    http-request-remote-port
 	    http-request-server-context
+	    http-request-start-async!
 	    ;; parameter
 	    http-parameter?
 	    http-parameter-name
@@ -221,12 +222,57 @@
 	  (immutable port    http-request-port) ;; host port
 	  (immutable remote-addr http-request-remote-address)
 	  (immutable remote-port http-request-remote-port)
-	  (immutable server-context http-request-server-context)))
+	  (immutable server-context http-request-server-context)
+	  ;; internal only
+	  (immutable server  http-request-server)
+	  (mutable   async?  http-request-async? http-request-async-set!)))
 (define-record-type (<http-parameter> make-http-parameter http-parameter?)
   (fields (immutable name    http-parameter-name)
 	  (immutable value   http-parameter-value)
 	  ;; if it's mime
 	  (immutable headers http-parameter-headers)))
+
+(define (fixup-status status)
+  (if (pair? status)
+      status
+      (cond ((assv status +http-status-message+))
+	    (else (list status "Unknown status")))))
+
+(define (http-request-start-async! http-request callback)
+  (define server (http-request-server http-request))
+  (define socket (http-request-socket http-request))
+  (define in (http-request-source http-request))
+  (server-detach-socket! server socket)
+  (http-request-async-set! http-request #t)
+  ;; TODO better async instead of creating thread...
+  (thread-start!
+   (make-thread
+    (lambda ()
+      (define out (buffered-port (socket-output-port socket)
+				 (buffer-mode block)))
+      (define headers (http-request-headers http-request))
+      (define (finish)
+	(when out
+	  (flush-output-port out)
+	  (close-port out))
+	(when in
+	  ;; close the socket
+	  ;; if something is still there, discard it.
+	  (unless (null? (socket-read-select 0 socket))
+	    (get-bytevector-all in))
+	  (close-port in))
+	(socket-shutdown socket SHUT_RDWR)
+	(socket-close socket))
+      (guard (e ((uncaught-exception? e)
+		 (http-internal-server-error out
+		   (uncaught-exception-reason e) headers)
+		 (finish))
+		(else
+		 (http-internal-server-error out e headers)
+		 (finish)))
+	(let-values (((s m c . h*) (callback http-request)))
+	  (http-emit-response out headers (fixup-status s) m c h*)
+	  (finish)))))))
 
 (define (http-emit-response out request-headers status mime content headers)
   (define (get-content mime content gzip?)
@@ -474,11 +520,6 @@
     ;; may require buffer values.
     (define raw-in (socket-input-port socket))    
     (define peer (socket-peer socket))
-    (define (fixup-status status)
-      (if (pair? status)
-	  status
-	  (cond ((assv status +http-status-message+))
-		(else (list status "Unknown status")))))
     ;; lazy
     (define (mime-handler packet port)
       (open-bytevector-input-port (get-bytevector-all port)))
@@ -611,24 +652,25 @@
 		  (else
 		   (http-internal-server-error out e headers)
 		   (finish in out)))
+	  (define request (make-http-request method path opath 
+					     headers params cookies 
+					     socket in
+					     (slot-ref server 'port)
+					     (ip-address->string 
+					      (slot-ref peer 'ip-address))
+					     (slot-ref peer 'port)
+					     (server-context server)
+					     server #f))
 	  (let-values (((status mime content . response-headers)
 			;; TODO proper http request
-			(invoke-handler dispatcher handler path
-					(make-http-request
-					 method path opath 
-					 headers params cookies 
-					 socket in
-					 (slot-ref server 'port)
-					 (ip-address->string 
-					  (slot-ref peer 'ip-address))
-					 (slot-ref peer 'port)
-					 (server-context server)))))
-	    (when (and status (not (eq? mime 'none)))
-	      (http-emit-response out headers
-				  (fixup-status status)
-				  mime content
-				  response-headers))
-	    (finish in out)))))
+			(invoke-handler dispatcher handler path request)))
+	    (unless (http-request-async? request)
+	      (when (and status (not (eq? mime 'none)))
+		(http-emit-response out headers
+				    (fixup-status status)
+				    mime content
+				    response-headers))
+	      (finish in out))))))
     (define (handle-unexpected)
       (define in (buffered-port raw-in (buffer-mode line)))
       (define out (buffered-port (socket-output-port socket)
