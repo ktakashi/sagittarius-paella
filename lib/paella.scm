@@ -243,6 +243,10 @@
   (define server (http-request-server http-request))
   (define socket (http-request-socket http-request))
   (define in (http-request-source http-request))
+  (define path (http-request-path http-request))
+  ;; at this moment, *dispatcher* must be set
+  (define handler (compute-handler callback (*dispatcher*) path http-request))
+
   (server-detach-socket! server socket)
   (http-request-async-set! http-request #t)
   ;; TODO better async instead of creating thread...
@@ -271,7 +275,7 @@
 		(else
 		 (http-internal-server-error out e headers)
 		 (finish)))
-	(let-values (((s m c . h*) (callback http-request)))
+	(let-values (((s m c . h*) (handler http-request)))
 	  (http-emit-response out headers (fixup-status s) m c h*)
 	  (finish)))))))
 
@@ -504,6 +508,21 @@
 		     (put-u8 out u8)
 		     (loop #f)))))))))
 
+(define *dispatcher* (make-parameter #f))
+(define (compute-handler handler dispatcher path http-request)
+  (define (path-match? template&filter)
+    (let ((template (car template&filter))
+	  (filter (cdr template&filter)))
+      (cond ((string? template) (and (string=? path template) filter))
+	    ((regex-pattern? template) (and (template path) filter))
+	    (else #f))))
+  (define filters
+    (filter-map path-match?
+		(list-queue-list (http-dispatcher-filters dispatcher))))
+  (fold-right (lambda (filter acc) (lambda (req) (filter req acc)))
+	      (lambda (req) (handler req))
+	      filters))
+  
 (define (http-server-handler dispatcher)
   (define log-dir (*http-log-directory*))
   (define logger
@@ -622,19 +641,7 @@
 			    socket r))))
 
     (define (invoke-handler dispatcher handler path http-request)
-      (define (path-match? template&filter)
-	(let ((template (car template&filter))
-	      (filter (cdr template&filter)))
-	  (cond ((string? template) (and (string=? path template) filter))
-		((regex-pattern? template) (and (template path) filter))
-		(else #f))))
-      (define filters
-	(filter-map path-match?
-		    (list-queue-list (http-dispatcher-filters dispatcher))))
-      (let ((invoke
-	     (fold-right (lambda (filter acc) (lambda (req) (filter req acc)))
-			 (lambda (req) (handler req))
-			 filters)))
+      (let ((invoke (compute-handler handler dispatcher path http-request)))
 	(invoke http-request)))
     
     (define (handle-http method opath path qs frg)
@@ -684,6 +691,7 @@
     
     (define upgraded-sockets (http-dispatcher-upgraded-sockets dispatcher))
 
+    (*dispatcher* dispatcher)
     (cond ((hashtable-ref upgraded-sockets socket) =>
 	   (lambda (next)
 	     (next socket)
