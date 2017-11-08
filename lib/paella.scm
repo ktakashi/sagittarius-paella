@@ -65,6 +65,7 @@
 	    ;; default handler
 	    http-file-handler
 	    http-registered-path-handler
+	    http-async-handler
 
 	    ;; for convenience
 	    http-mapped-path->alist
@@ -731,4 +732,8 @@
 			   `(li ,(apply http-make-path-entry path))))
 		     path-map))))))
 
+(define (http-async-handler callback)
+  (lambda (req)
+    (http-request-start-async! req callback)
+    (values #f #f #f)))
 )

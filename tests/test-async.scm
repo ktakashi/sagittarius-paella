@@ -9,19 +9,13 @@
 	(srfi :64))
 
 (define (async-handler req)
-  ;;(thread-sleep! 1)
-  #;(let-values (((s h b) (http-get "google.com" "/" :secure? #t)))
-       (values 200 'text/html b))
-  (http-request-start-async! req
-   (lambda (req)
-     (thread-sleep! 1)
-     (let-values (((s h b) (http-get "google.com" "/" :secure? #t)))
-       (values 200 'text/html b))))
-  (values #f #f #f))
+  (thread-sleep! 1)
+  (let-values (((s h b) (http-get "google.com" "/" :secure? #t)))
+    (values 200 'text/html b)))
 
 (define http-dispatcher
   (make-http-server-dispatcher
-   (GET "/async" async-handler)))
+   (GET "/async" (http-async-handler async-handler))))
 
 (define config (make-http-server-config
 		:max-thread 1
