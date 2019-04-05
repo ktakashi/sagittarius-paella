@@ -370,8 +370,9 @@
       (put-bytevector out #*"HTTP/1.1 ")
       (put-bytevector out (string->utf8 
 			   (format "~a ~a\r\n" (car status) (cadr status))))
-      (put-bytevector out (string->utf8
-			   (format "Content-Type: ~a\r\n" content-type)))
+      (when content-type
+	(put-bytevector out (string->utf8
+			     (format "Content-Type: ~a\r\n" content-type))))
       (when compressed?
 	(put-bytevector out #*"Vary: Accept-Encoding \r\n")
 	(put-bytevector out #*"Content-Encoding: gzip\r\n"))
